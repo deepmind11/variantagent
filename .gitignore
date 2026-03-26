@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Type checking
+.mypy_cache/
+
+# Environment
+.env
+.env.local
+
+# Data (keep structure, ignore large files)
+data/test_samples/*.vcf
+data/test_samples/*.vcf.gz
+data/test_samples/*.bam
+data/test_samples/*.json
+!data/test_samples/README.md
+data/knowledge_base/*.pkl
+data/knowledge_base/*.parquet
+data/benchmarks/results/
+
+# ChromaDB
+chroma_db/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Cassettes (VCR.py) - tracked, but large ones excluded
+tests/cassettes/*.yaml
+!tests/cassettes/.gitkeep
