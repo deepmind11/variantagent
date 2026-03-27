@@ -75,7 +75,7 @@ class ACMGCriteria(BaseModel):
     def get_applied_codes(self) -> list[EvidenceCode]:
         """Return all criteria that were applied (met)."""
         codes = []
-        for field_name in self.model_fields:
+        for field_name in type(self).model_fields:
             value = getattr(self, field_name)
             if isinstance(value, EvidenceCode) and value.applied:
                 codes.append(value)
