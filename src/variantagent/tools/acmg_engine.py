@@ -59,6 +59,10 @@ def classify(criteria: ACMGCriteria) -> tuple[ACMGClassificationResult, str]:
     if bs >= 1 and bp >= 1:
         return ACMGClassificationResult.LIKELY_BENIGN, "1 Strong Benign + 1 Supporting Benign"
 
+    # Likely Benign: >= 2 Supporting Benign
+    if bp >= 2:
+        return ACMGClassificationResult.LIKELY_BENIGN, f"{bp} Supporting Benign criteria"
+
     # === PATHOGENIC RULES ===
 
     # Pathogenic (i): 1 Very Strong + >= 1 Strong
@@ -96,7 +100,8 @@ def classify(criteria: ACMGCriteria) -> tuple[ACMGClassificationResult, str]:
     # === LIKELY PATHOGENIC RULES ===
 
     # Likely Pathogenic (i): 1 Very Strong + 1 Moderate
-    if pvs >= 1 and pm == 1:
+    # Safe to use >= 1 here because pvs + pm >= 2 is already caught as PATHOGENIC above
+    if pvs >= 1 and pm >= 1:
         return ACMGClassificationResult.LIKELY_PATHOGENIC, "1 Very Strong + 1 Moderate"
 
     # Likely Pathogenic (ii): 1 Strong + 1-2 Moderate

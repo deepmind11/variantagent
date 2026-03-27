@@ -180,7 +180,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["min_mapping_rate"]["fail"],
                 severity=QCStatus.FAIL,
                 description=str(taxonomy["description"]),
-                likely_cause=str(taxonomy["likely_causes"][0]) if isinstance(taxonomy["likely_causes"], list) else str(taxonomy["likely_causes"]),
+                likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
                 recommended_action=str(taxonomy["recommended_action"]),
             )
         )
@@ -192,7 +192,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["min_mapping_rate"]["warn"],
                 severity=QCStatus.WARN,
                 description="Mapping rate below optimal threshold",
-                likely_cause="Possible low-level contamination or difficult library",
+                likely_causes=["Possible low-level contamination or difficult library"],
                 recommended_action="Monitor — acceptable but investigate if other metrics also flag.",
             )
         )
@@ -207,7 +207,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["max_duplication_rate"]["fail"],
                 severity=QCStatus.FAIL,
                 description=str(taxonomy["description"]),
-                likely_cause=str(taxonomy["likely_causes"][0]) if isinstance(taxonomy["likely_causes"], list) else str(taxonomy["likely_causes"]),
+                likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
                 recommended_action=str(taxonomy["recommended_action"]),
             )
         )
@@ -219,7 +219,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["max_duplication_rate"]["warn"],
                 severity=QCStatus.WARN,
                 description="Elevated duplicate rate — library complexity may be low",
-                likely_cause="Moderate PCR over-amplification or borderline input DNA",
+                likely_causes=["Moderate PCR over-amplification or borderline input DNA"],
                 recommended_action="Note for interpretation — effective coverage is reduced.",
             )
         )
@@ -233,7 +233,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["min_properly_paired_rate"]["fail"],
                 severity=QCStatus.FAIL,
                 description="Low properly-paired rate indicates structural issues",
-                likely_cause="Possible chimeric reads, contamination, or alignment artifacts",
+                likely_causes=["Possible chimeric reads", "Contamination", "Alignment artifacts"],
                 recommended_action="Investigate insert size distribution and check for chimeras.",
             )
         )
@@ -245,7 +245,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["min_properly_paired_rate"]["warn"],
                 severity=QCStatus.WARN,
                 description="Properly-paired rate below optimal threshold",
-                likely_cause="Minor alignment issues or library prep anomaly",
+                likely_causes=["Minor alignment issues or library prep anomaly"],
                 recommended_action="Monitor — acceptable but note for interpretation.",
             )
         )
@@ -259,7 +259,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["max_singleton_rate"]["fail"],
                 severity=QCStatus.FAIL,
                 description="High singleton rate indicates mate-pair issues",
-                likely_cause="Library prep failure, chimeric reads, or contamination",
+                likely_causes=["Library prep failure", "Chimeric reads", "Contamination"],
                 recommended_action="Check insert size and mate mapping. Consider re-prep.",
             )
         )
@@ -271,7 +271,7 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["max_singleton_rate"]["warn"],
                 severity=QCStatus.WARN,
                 description="Elevated singleton rate",
-                likely_cause="Minor mate-pair mapping issues",
+                likely_causes=["Minor mate-pair mapping issues"],
                 recommended_action="Monitor — typically not actionable alone.",
             )
         )
@@ -295,7 +295,7 @@ def assess_multiqc(multiqc: MultiQCMetrics) -> list[QCIssue]:
                     threshold=QC_THRESHOLDS["min_coverage"]["fail"],
                     severity=QCStatus.FAIL,
                     description=str(taxonomy["description"]),
-                    likely_cause=str(taxonomy["likely_causes"][0]) if isinstance(taxonomy["likely_causes"], list) else str(taxonomy["likely_causes"]),
+                    likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
                     recommended_action=str(taxonomy["recommended_action"]),
                 )
             )
@@ -307,7 +307,7 @@ def assess_multiqc(multiqc: MultiQCMetrics) -> list[QCIssue]:
                     threshold=QC_THRESHOLDS["min_coverage"]["warn"],
                     severity=QCStatus.WARN,
                     description="Coverage below optimal threshold",
-                    likely_cause="Borderline DNA input or minor sequencing underperformance",
+                    likely_causes=["Borderline DNA input or minor sequencing underperformance"],
                     recommended_action="Variant calls in low-complexity regions may be less reliable.",
                 )
             )
@@ -323,7 +323,7 @@ def assess_multiqc(multiqc: MultiQCMetrics) -> list[QCIssue]:
                 threshold=5.0,
                 severity=severity,
                 description=str(taxonomy["description"]),
-                likely_cause=str(taxonomy["likely_causes"][0]) if isinstance(taxonomy["likely_causes"], list) else str(taxonomy["likely_causes"]),
+                likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
                 recommended_action=str(taxonomy["recommended_action"]),
             )
         )
@@ -370,7 +370,7 @@ def run_qc_assessment(
                     threshold=QC_THRESHOLDS["min_variant_position_coverage"]["fail"],
                     severity=QCStatus.FAIL,
                     description=str(taxonomy["description"]),
-                    likely_cause=str(taxonomy["likely_causes"][0]) if isinstance(taxonomy["likely_causes"], list) else str(taxonomy["likely_causes"]),
+                    likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
                     recommended_action=str(taxonomy["recommended_action"]),
                 )
             )
@@ -382,7 +382,7 @@ def run_qc_assessment(
                     threshold=QC_THRESHOLDS["min_variant_position_coverage"]["warn"],
                     severity=QCStatus.WARN,
                     description="Coverage at variant position is below optimal",
-                    likely_cause="Regional capture or GC bias effect",
+                    likely_causes=["Regional capture or GC bias effect"],
                     recommended_action="Interpret variant with caution — low coverage reduces call confidence.",
                 )
             )

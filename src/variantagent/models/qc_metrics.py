@@ -53,8 +53,8 @@ class QCIssue(BaseModel):
     threshold: float = Field(..., description="The threshold that was exceeded")
     severity: QCStatus = Field(..., description="WARN or FAIL")
     description: str = Field(..., description="Human-readable description of the issue")
-    likely_cause: str = Field(
-        ..., description="Most likely root cause based on domain expertise"
+    likely_causes: list[str] = Field(
+        ..., description="Likely root causes based on domain expertise, ranked by probability"
     )
     recommended_action: str = Field(..., description="Recommended action to resolve")
 

@@ -53,6 +53,9 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 
+# Private docs (not for public repo)
+docs/HOW_IT_WORKS.md
+
 # Cassettes (VCR.py) - tracked, but large ones excluded
 tests/cassettes/*.yaml
 !tests/cassettes/.gitkeep

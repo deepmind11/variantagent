@@ -21,6 +21,7 @@ The graph structure:
 from __future__ import annotations
 
 import logging
+import operator
 import time
 import uuid
 from typing import Annotated, Any
@@ -65,15 +66,15 @@ class AnalysisState(TypedDict):
     classification: ACMGClassification | None
 
     # Reviewer
-    reviewer_findings: list[ReviewerFinding]
+    reviewer_findings: Annotated[list[ReviewerFinding], operator.add]
     overall_confidence: float
 
     # Report
     report: TriageReport | None
 
-    # Provenance (accumulated across nodes)
-    provenance: list[ProvenanceEntry]
-    errors: list[str]
+    # Provenance (accumulated across nodes — reducer appends, never overwrites)
+    provenance: Annotated[list[ProvenanceEntry], operator.add]
+    errors: Annotated[list[str], operator.add]
 
     # Human-in-the-loop
     requires_human_review: bool
@@ -182,7 +183,7 @@ def qc_node(state: AnalysisState) -> dict[str, Any]:
 
     return {
         "qc_assessment": qc_assessment,
-        "provenance": state["provenance"] + [provenance_entry],
+        "provenance": [provenance_entry],
     }
 
 
@@ -217,8 +218,8 @@ def annotation_node(state: AnalysisState) -> dict[str, Any]:
 
     return {
         "annotation": annotation,
-        "provenance": state["provenance"] + [provenance_entry],
-        "errors": state["errors"] + errors,
+        "provenance": [provenance_entry],
+        "errors": errors,
     }
 
 
@@ -246,7 +247,7 @@ def literature_node(state: AnalysisState) -> dict[str, Any]:
     )
 
     return {
-        "provenance": state["provenance"] + [provenance_entry],
+        "provenance": [provenance_entry],
     }
 
 
@@ -289,7 +290,7 @@ def classification_node(state: AnalysisState) -> dict[str, Any]:
     return {
         "classification": classification,
         "overall_confidence": classification.confidence,
-        "provenance": state["provenance"] + [provenance_entry],
+        "provenance": [provenance_entry],
     }
 
 
@@ -355,7 +356,7 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
         "reviewer_findings": findings,
         "requires_human_review": needs_review,
         "human_review_reason": review_reason,
-        "provenance": state["provenance"] + [provenance_entry],
+        "provenance": [provenance_entry],
     }
 
 
@@ -390,7 +391,7 @@ def hitl_node(state: AnalysisState) -> dict[str, Any]:
 
     result: dict[str, Any] = {
         "requires_human_review": False,
-        "provenance": state["provenance"] + [provenance_entry],
+        "provenance": [provenance_entry],
     }
 
     # If human provided an override classification, update it
@@ -404,7 +405,7 @@ def hitl_node(state: AnalysisState) -> dict[str, Any]:
             )
             result["classification"] = updated
         except ValueError:
-            result["errors"] = state["errors"] + [f"Invalid override classification: {override}"]
+            result["errors"] = [f"Invalid override classification: {override}"]
 
     return result
 
@@ -437,22 +438,37 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
     )
 
     # Generate natural language summary
-    classification_text = "Unknown"
-    if state["classification"]:
-        classification_text = state["classification"].classification.value
-
     qc_text = "not assessed"
     if state["qc_assessment"]:
         qc_text = state["qc_assessment"].overall_status.value
 
-    report.natural_language_summary = (
-        f"Variant {state['variant'].variant_id} "
-        f"(gene: {state['variant'].gene or 'unknown'}) "
-        f"was classified as {classification_text} "
-        f"with {state['overall_confidence']:.0%} confidence. "
-        f"QC status: {qc_text}. "
-        f"{len(state['reviewer_findings'])} reviewer concern(s)."
+    qc_aborted = (
+        state["qc_assessment"] is not None
+        and not state["qc_assessment"].reliable_for_interpretation
+        and state["classification"] is None
     )
+
+    if qc_aborted:
+        report.natural_language_summary = (
+            f"Variant {state['variant'].variant_id} "
+            f"(gene: {state['variant'].gene or 'unknown'}) "
+            f"was NOT assessed due to QC failure (status: {qc_text}). "
+            f"Variant interpretation was skipped because the sequencing data "
+            f"is unreliable. Recommended action: {state['qc_assessment'].issues[0].recommended_action if state['qc_assessment'].issues else 'review QC metrics'}."
+        )
+    else:
+        classification_text = "Uncertain Significance"
+        if state["classification"]:
+            classification_text = state["classification"].classification.value
+
+        report.natural_language_summary = (
+            f"Variant {state['variant'].variant_id} "
+            f"(gene: {state['variant'].gene or 'unknown'}) "
+            f"was classified as {classification_text} "
+            f"with {state['overall_confidence']:.0%} confidence. "
+            f"QC status: {qc_text}. "
+            f"{len(state['reviewer_findings'])} reviewer concern(s)."
+        )
 
     duration_ms = int((time.time() - start) * 1000)
 
