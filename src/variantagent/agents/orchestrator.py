@@ -447,26 +447,58 @@ def _run_literature_search_sync(variant: Variant) -> tuple[list, str | None]:
 def classification_node(state: AnalysisState) -> dict[str, Any]:
     """Apply ACMG criteria and classify the variant.
 
-    TODO: Implement LLM-based criterion assessment + deterministic rule engine.
-    Currently returns a placeholder VUS classification.
+    Two-phase approach:
+    1. Rule-based criterion assessment using annotation data (no LLM needed
+       for criteria that can be evaluated deterministically from database evidence)
+    2. Deterministic ACMG combining rules via acmg_engine.classify()
+
+    LLM-based criterion assessment for ambiguous criteria will be added
+    once the rule-based approach is validated.
     """
     start = time.time()
     variant = state["variant"]
+    annotation = state["annotation"]
 
     from variantagent.models.classification import (
         ACMGClassification,
-        ACMGClassificationResult,
         ACMGCriteria,
+        EvidenceCode,
+        EvidenceDirection,
+        EvidenceStrength,
     )
+    from variantagent.tools.acmg_engine import classify as acmg_classify
 
-    # Placeholder classification — will be replaced with real ACMG assessment
+    criteria = ACMGCriteria()
+
+    # Evaluate criteria from annotation evidence (deterministic, no LLM)
+    if annotation:
+        criteria = _evaluate_criteria_from_evidence(variant, annotation)
+
+    # Run deterministic ACMG combining rules
+    classification_result, rule_description = acmg_classify(criteria)
+
+    # Calculate confidence based on evidence completeness
+    confidence = _calculate_confidence(annotation, criteria)
+
+    applied_codes = criteria.get_applied_codes()
+    applied_summary = [c.code for c in applied_codes]
+
+    reasoning_parts = [f"Classification: {classification_result.value}"]
+    reasoning_parts.append(f"Rule applied: {rule_description}")
+    if applied_codes:
+        reasoning_parts.append(f"Evidence codes: {', '.join(applied_summary)}")
+        for code in applied_codes:
+            reasoning_parts.append(f"  {code.code}: {code.reasoning}")
+    else:
+        reasoning_parts.append("No ACMG evidence criteria were met from available data.")
+
     classification = ACMGClassification(
-        classification=ACMGClassificationResult.VUS,
-        criteria=ACMGCriteria(),
-        confidence=0.5,
-        reasoning="Placeholder — ACMG criterion assessment not yet implemented",
-        applied_codes_summary=[],
-        classification_rule="No evidence criteria met",
+        classification=classification_result,
+        criteria=criteria,
+        confidence=confidence,
+        reasoning="\n".join(reasoning_parts),
+        applied_codes_summary=applied_summary,
+        classification_rule=rule_description,
     )
 
     duration_ms = int((time.time() - start) * 1000)
@@ -474,17 +506,200 @@ def classification_node(state: AnalysisState) -> dict[str, Any]:
         step=5,
         agent="classification_agent",
         action="ACMG classification",
-        input_summary=f"Variant: {variant.variant_id}, annotation available: {state['annotation'] is not None}",
-        output_summary=f"Classification: {classification.classification.value} "
-                       f"(confidence: {classification.confidence})",
+        input_summary=f"Variant: {variant.variant_id}, "
+                      f"ClinVar: {annotation.clinvar.found if annotation else 'N/A'}, "
+                      f"gnomAD AF: {annotation.gnomad.overall_af if annotation and annotation.gnomad.found else 'N/A'}",
+        output_summary=f"{classification_result.value} ({', '.join(applied_summary) or 'no criteria met'}) "
+                       f"confidence: {confidence:.2f}",
         duration_ms=duration_ms,
+    )
+
+    logger.info(
+        "Classification for %s: %s (confidence: %.2f, codes: %s)",
+        variant.variant_id,
+        classification_result.value,
+        confidence,
+        applied_summary,
     )
 
     return {
         "classification": classification,
-        "overall_confidence": classification.confidence,
+        "overall_confidence": confidence,
         "provenance": [provenance_entry],
     }
+
+
+def _evaluate_criteria_from_evidence(
+    variant: Variant,
+    annotation: VariantAnnotation,
+) -> "ACMGCriteria":
+    """Evaluate ACMG criteria deterministically from annotation evidence.
+
+    These criteria can be assessed without LLM judgment — they depend on
+    objective data from databases.
+    """
+    from variantagent.models.classification import (
+        ACMGCriteria,
+        EvidenceCode,
+        EvidenceDirection,
+        EvidenceStrength,
+    )
+
+    kwargs: dict[str, EvidenceCode] = {}
+
+    # --- BA1: Allele frequency > 5% (standalone benign) ---
+    if annotation.gnomad.found and annotation.gnomad.overall_af is not None:
+        if annotation.gnomad.overall_af > 0.05:
+            kwargs["ba1"] = EvidenceCode(
+                code="BA1", name="Allele frequency > 5%",
+                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.VERY_STRONG,
+                applied=True,
+                reasoning=f"gnomAD overall AF = {annotation.gnomad.overall_af:.4f} (> 0.05 threshold)",
+                data_source="gnomAD", confidence=0.99,
+            )
+
+    # --- BS1: Allele frequency greater than expected for disorder ---
+    if annotation.gnomad.found and annotation.gnomad.overall_af is not None:
+        if 0.01 < annotation.gnomad.overall_af <= 0.05:
+            kwargs["bs1"] = EvidenceCode(
+                code="BS1", name="Allele frequency greater than expected",
+                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.STRONG,
+                applied=True,
+                reasoning=f"gnomAD overall AF = {annotation.gnomad.overall_af:.4f} (> 0.01, suggesting common variant)",
+                data_source="gnomAD", confidence=0.90,
+            )
+
+    # --- PM2: Absent from population databases ---
+    if annotation.gnomad.found and annotation.gnomad.overall_af is not None:
+        if annotation.gnomad.overall_af < 0.0001:
+            kwargs["pm2"] = EvidenceCode(
+                code="PM2", name="Absent/extremely low frequency in population databases",
+                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.MODERATE,
+                applied=True,
+                reasoning=f"gnomAD overall AF = {annotation.gnomad.overall_af:.6f} (< 0.0001 threshold)",
+                data_source="gnomAD", confidence=0.85,
+            )
+    elif annotation.gnomad.found is False:
+        kwargs["pm2"] = EvidenceCode(
+            code="PM2", name="Absent from population databases",
+            direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.MODERATE,
+            applied=True,
+            reasoning="Variant not found in gnomAD — absent from population databases",
+            data_source="gnomAD", confidence=0.80,
+        )
+
+    # --- PP5: Reputable source reports pathogenic ---
+    if annotation.clinvar.found and annotation.clinvar.clinical_significance:
+        sig = annotation.clinvar.clinical_significance.lower()
+        stars = annotation.clinvar.review_stars or 0
+
+        if "pathogenic" in sig and "likely" not in sig and stars >= 2:
+            kwargs["pp5"] = EvidenceCode(
+                code="PP5", name="Reputable source reports pathogenic",
+                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.SUPPORTING,
+                applied=True,
+                reasoning=f"ClinVar: '{annotation.clinvar.clinical_significance}' "
+                          f"({stars}-star review, {annotation.clinvar.submitter_count} submitters)",
+                data_source="ClinVar", confidence=0.90,
+            )
+        elif "likely pathogenic" in sig and stars >= 2:
+            kwargs["pp5"] = EvidenceCode(
+                code="PP5", name="Reputable source reports likely pathogenic",
+                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.SUPPORTING,
+                applied=True,
+                reasoning=f"ClinVar: '{annotation.clinvar.clinical_significance}' ({stars}-star review)",
+                data_source="ClinVar", confidence=0.80,
+            )
+
+    # --- BP6: Reputable source reports benign ---
+    if annotation.clinvar.found and annotation.clinvar.clinical_significance:
+        sig = annotation.clinvar.clinical_significance.lower()
+        stars = annotation.clinvar.review_stars or 0
+
+        if ("benign" in sig or "likely benign" in sig) and stars >= 2:
+            kwargs["bp6"] = EvidenceCode(
+                code="BP6", name="Reputable source reports benign",
+                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.SUPPORTING,
+                applied=True,
+                reasoning=f"ClinVar: '{annotation.clinvar.clinical_significance}' ({stars}-star review)",
+                data_source="ClinVar", confidence=0.90,
+            )
+
+    # --- PP3: Computational evidence supports deleterious ---
+    if annotation.ensembl_vep.found:
+        sift_del = annotation.ensembl_vep.sift_prediction == "deleterious"
+        polyphen_dam = annotation.ensembl_vep.polyphen_prediction in (
+            "probably_damaging", "possibly_damaging"
+        )
+        if sift_del and polyphen_dam:
+            kwargs["pp3"] = EvidenceCode(
+                code="PP3", name="Computational evidence supports deleterious",
+                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.SUPPORTING,
+                applied=True,
+                reasoning=f"SIFT: {annotation.ensembl_vep.sift_prediction} "
+                          f"(score: {annotation.ensembl_vep.sift_score}), "
+                          f"PolyPhen: {annotation.ensembl_vep.polyphen_prediction} "
+                          f"(score: {annotation.ensembl_vep.polyphen_score})",
+                data_source="Ensembl VEP", confidence=0.70,
+            )
+
+    # --- BP4: Computational evidence supports benign ---
+    if annotation.ensembl_vep.found:
+        sift_tol = annotation.ensembl_vep.sift_prediction == "tolerated"
+        polyphen_ben = annotation.ensembl_vep.polyphen_prediction == "benign"
+        if sift_tol and polyphen_ben:
+            kwargs["bp4"] = EvidenceCode(
+                code="BP4", name="Computational evidence supports benign",
+                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.SUPPORTING,
+                applied=True,
+                reasoning=f"SIFT: tolerated (score: {annotation.ensembl_vep.sift_score}), "
+                          f"PolyPhen: benign (score: {annotation.ensembl_vep.polyphen_score})",
+                data_source="Ensembl VEP", confidence=0.70,
+            )
+
+    # --- PM1: Located in mutational hot spot / functional domain ---
+    if annotation.ensembl_vep.found and annotation.ensembl_vep.protein_domain:
+        kwargs["pm1"] = EvidenceCode(
+            code="PM1", name="Located in mutational hot spot / functional domain",
+            direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.MODERATE,
+            applied=True,
+            reasoning=f"Variant falls in protein domain: {annotation.ensembl_vep.protein_domain}",
+            data_source="Ensembl VEP", confidence=0.65,
+        )
+
+    return ACMGCriteria(**kwargs)
+
+
+def _calculate_confidence(
+    annotation: VariantAnnotation | None,
+    criteria: "ACMGCriteria",
+) -> float:
+    """Calculate confidence score based on evidence completeness.
+
+    Higher confidence when more data sources contributed evidence.
+    """
+    if annotation is None:
+        return 0.2
+
+    score = 0.3  # Base confidence
+
+    # Bonus for each data source that returned results
+    if annotation.clinvar.found:
+        score += 0.15
+    if annotation.gnomad.found:
+        score += 0.15
+    if annotation.ensembl_vep.found:
+        score += 0.10
+
+    # Bonus for number of criteria evaluated
+    applied = criteria.get_applied_codes()
+    score += min(len(applied) * 0.05, 0.20)
+
+    # Bonus for ClinVar review quality
+    if annotation.clinvar.found and (annotation.clinvar.review_stars or 0) >= 2:
+        score += 0.10
+
+    return min(score, 1.0)
 
 
 def review_node(state: AnalysisState) -> dict[str, Any]:
