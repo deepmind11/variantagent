@@ -190,31 +190,42 @@ def qc_node(state: AnalysisState) -> dict[str, Any]:
 def annotation_node(state: AnalysisState) -> dict[str, Any]:
     """Query public databases for variant annotation.
 
-    TODO: Implement actual API calls to ClinVar, gnomAD, Ensembl VEP.
-    Currently returns an empty annotation as a placeholder.
+    Runs ClinVar + Ensembl VEP in parallel (both are fast),
+    then gnomAD sequentially (aggressive rate limiting).
+    If any API fails, continues with the others (graceful degradation).
     """
+    import asyncio
+
     start = time.time()
     variant = state["variant"]
 
-    # Placeholder — will be replaced with real API calls
-    annotation = VariantAnnotation()
-    errors: list[str] = []
-
-    # TODO: Call ClinVar MCP server
-    # TODO: Call gnomAD API
-    # TODO: Call Ensembl VEP API
-    # TODO: Handle rate limiting, retries, fallbacks
+    annotation, errors, sources = _run_annotation_sync(variant)
 
     duration_ms = int((time.time() - start) * 1000)
+
+    # Build summary of what was found
+    found_sources = []
+    if annotation.clinvar.found:
+        found_sources.append(f"ClinVar: {annotation.clinvar.clinical_significance}")
+    if annotation.ensembl_vep.found:
+        found_sources.append(f"VEP: {annotation.ensembl_vep.consequence_type}")
+    if annotation.gnomad.found:
+        af_str = f"{annotation.gnomad.overall_af:.6f}" if annotation.gnomad.overall_af else "N/A"
+        found_sources.append(f"gnomAD: AF={af_str}")
+
+    output_summary = "; ".join(found_sources) if found_sources else "No databases returned results"
+
     provenance_entry = ProvenanceEntry(
         step=3,
         agent="annotation_agent",
         action="Database annotation",
         input_summary=f"Variant: {variant.variant_id}",
-        output_summary="Queried ClinVar, gnomAD, Ensembl VEP (placeholder)",
-        data_source="ClinVar, gnomAD, Ensembl VEP",
+        output_summary=output_summary,
+        data_source=", ".join(sources),
         duration_ms=duration_ms,
     )
+
+    logger.info("Annotation for %s: %s", variant.variant_id, output_summary)
 
     return {
         "annotation": annotation,
@@ -223,32 +234,214 @@ def annotation_node(state: AnalysisState) -> dict[str, Any]:
     }
 
 
-def literature_node(state: AnalysisState) -> dict[str, Any]:
-    """Search PubMed and RAG knowledge base for variant evidence.
+def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str], list[str]]:
+    """Run all annotation queries synchronously.
 
-    TODO: Implement PubMed search and ACMG guidelines RAG.
-    Currently a placeholder.
+    Uses synchronous httpx to avoid event loop conflicts with LangGraph.
+    ClinVar + VEP run sequentially (fast enough), gnomAD last (slow due to rate limiting).
+
+    Returns:
+        Tuple of (annotation, errors, sources_queried).
     """
+    import httpx
+
+    from variantagent.tools.clinvar_client import ClinVarAnnotation, _build_query, _esearch, _esummary, _parse_esummary
+    from variantagent.models.annotation import EnsemblVEPAnnotation, GnomADFrequency
+
+    errors: list[str] = []
+    sources: list[str] = ["ClinVar", "Ensembl VEP", "gnomAD"]
+
+    clinvar_result = ClinVarAnnotation(found=False)
+    vep_result = EnsemblVEPAnnotation(found=False)
+    gnomad_result = GnomADFrequency(found=False)
+
+    with httpx.Client(timeout=30.0) as client:
+        # ClinVar (sync)
+        try:
+            from variantagent.tools.clinvar_client import _base_params, EUTILS_BASE
+
+            query = _build_query(variant)
+            search_params = {
+                **_base_params(),
+                "db": "clinvar", "term": query, "retmode": "json", "retmax": "5",
+            }
+            resp = client.get(f"{EUTILS_BASE}/esearch.fcgi", params=search_params)
+            resp.raise_for_status()
+            uids = resp.json().get("esearchresult", {}).get("idlist", [])
+
+            if uids:
+                summary_params = {
+                    **_base_params(),
+                    "db": "clinvar", "id": ",".join(uids), "retmode": "json",
+                }
+                resp = client.get(f"{EUTILS_BASE}/esummary.fcgi", params=summary_params)
+                resp.raise_for_status()
+                clinvar_result = _parse_esummary(resp.json(), uids)
+        except Exception as e:
+            errors.append(f"ClinVar error: {e}")
+            logger.error("ClinVar sync query failed: %s", e)
+
+        # Ensembl VEP (sync)
+        try:
+            from variantagent.tools.ensembl_client import _build_vep_url, _parse_vep_response
+
+            url = _build_vep_url(variant)
+            params = {
+                "content-type": "application/json",
+                "pick": "1", "SIFT": "b", "PolyPhen": "b",
+                "domains": "1", "canonical": "1", "hgvs": "1",
+            }
+            resp = client.get(url, params=params, headers={"Content-Type": "application/json"})
+            if resp.status_code != 429:
+                resp.raise_for_status()
+                vep_result = _parse_vep_response(resp.json())
+        except Exception as e:
+            errors.append(f"VEP error: {e}")
+            logger.error("VEP sync query failed: %s", e)
+
+        # gnomAD (sync — GraphQL POST)
+        try:
+            from variantagent.tools.gnomad_client import (
+                GNOMAD_API, VARIANT_QUERY, _build_variant_id, _parse_gnomad_response,
+            )
+
+            payload = {
+                "query": VARIANT_QUERY,
+                "variables": {"variantId": _build_variant_id(variant), "datasetId": "gnomad_r4"},
+            }
+            resp = client.post(
+                GNOMAD_API, json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if "errors" not in data:
+                gnomad_result = _parse_gnomad_response(data)
+        except Exception as e:
+            errors.append(f"gnomAD error: {e}")
+            logger.error("gnomAD sync query failed: %s", e)
+
+    annotation = VariantAnnotation(
+        clinvar=clinvar_result,
+        gnomad=gnomad_result,
+        ensembl_vep=vep_result,
+        annotation_errors=errors,
+    )
+
+    return annotation, errors, sources
+
+
+def literature_node(state: AnalysisState) -> dict[str, Any]:
+    """Search PubMed for variant-specific literature evidence.
+
+    Uses progressive broadening: gene + HGVS → gene + protein change → gene + disease.
+    RAG over ACMG guidelines will be added in a future step.
+    """
+    import asyncio
+
     start = time.time()
     variant = state["variant"]
 
-    # TODO: PubMed search via NCBI E-utilities
-    # TODO: RAG over embedded ACMG guidelines (ChromaDB)
+    pmids: list[str] = []
+    errors: list[str] = []
+
+    if variant.gene:
+        articles, pub_err = _run_literature_search_sync(variant)
+        if pub_err:
+            errors.append(pub_err)
+        pmids = [a.pmid for a in articles]
 
     duration_ms = int((time.time() - start) * 1000)
+
+    output_summary = f"Found {len(pmids)} articles" if pmids else "No articles found"
+    if not variant.gene:
+        output_summary = "Skipped — no gene symbol available"
+
     provenance_entry = ProvenanceEntry(
         step=4,
         agent="literature_agent",
         action="Literature search",
         input_summary=f"Gene: {variant.gene or 'unknown'}, Variant: {variant.variant_id}",
-        output_summary="Literature search (placeholder)",
+        output_summary=output_summary,
         data_source="PubMed",
         duration_ms=duration_ms,
     )
 
-    return {
+    # Store PMIDs in the annotation if available
+    result: dict[str, Any] = {
         "provenance": [provenance_entry],
+        "errors": errors,
     }
+
+    # Update annotation with PubMed references
+    if pmids and state["annotation"]:
+        updated_annotation = state["annotation"].model_copy(
+            update={"pubmed_references": pmids}
+        )
+        result["annotation"] = updated_annotation
+
+    return result
+
+
+def _run_literature_search_sync(variant: Variant) -> tuple[list, str | None]:
+    """Run PubMed search synchronously."""
+    import httpx
+
+    from variantagent.tools.pubmed_client import PubMedArticle, _build_search_queries
+    from variantagent.tools.clinvar_client import _base_params, EUTILS_BASE
+
+    if not variant.gene:
+        return [], None
+
+    queries = _build_search_queries(variant.gene, variant.hgvs_p, variant.variant_id)
+    articles: list[PubMedArticle] = []
+    seen: set[str] = set()
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            all_pmids: list[str] = []
+
+            for query in queries:
+                if len(all_pmids) >= 5:
+                    break
+                params = {
+                    **_base_params(),
+                    "db": "pubmed", "term": query, "retmode": "json",
+                    "retmax": "5", "sort": "relevance",
+                }
+                resp = client.get(f"{EUTILS_BASE}/esearch.fcgi", params=params)
+                resp.raise_for_status()
+                pmids = resp.json().get("esearchresult", {}).get("idlist", [])
+                for pmid in pmids:
+                    if pmid not in seen and len(all_pmids) < 5:
+                        all_pmids.append(pmid)
+                        seen.add(pmid)
+
+            if all_pmids:
+                params = {
+                    **_base_params(),
+                    "db": "pubmed", "id": ",".join(all_pmids), "retmode": "json",
+                }
+                resp = client.get(f"{EUTILS_BASE}/esummary.fcgi", params=params)
+                resp.raise_for_status()
+                result = resp.json().get("result", {})
+
+                for pmid in all_pmids:
+                    record = result.get(pmid, {})
+                    if record and "error" not in record:
+                        authors = [a.get("name", "") for a in record.get("authors", [])]
+                        articles.append(PubMedArticle(
+                            pmid=pmid,
+                            title=record.get("title", ""),
+                            journal=record.get("fulljournalname", ""),
+                            year=record.get("pubdate", "")[:4],
+                            authors=authors,
+                        ))
+
+        return articles, None
+    except Exception as e:
+        logger.error("PubMed sync search failed: %s", e)
+        return [], f"PubMed error: {e}"
 
 
 def classification_node(state: AnalysisState) -> dict[str, Any]:
