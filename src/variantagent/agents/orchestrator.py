@@ -705,16 +705,21 @@ def _calculate_confidence(
 def review_node(state: AnalysisState) -> dict[str, Any]:
     """Self-evaluation: cross-check conclusions and detect contradictions.
 
-    TODO: Implement claim extraction, source verification, contradiction detection.
-    Currently performs basic consistency checks.
+    Checks for:
+    1. QC vs classification consistency
+    2. Population frequency vs pathogenicity consistency
+    3. Computational predictions vs classification consistency
+    4. ClinVar vs our classification agreement
+    5. Low confidence warnings
     """
     start = time.time()
     findings: list[ReviewerFinding] = []
 
-    # Basic consistency check: QC said unreliable but we still classified
     qc = state["qc_assessment"]
     classification = state["classification"]
+    annotation = state["annotation"]
 
+    # --- Check 1: QC said unreliable but we still classified ---
     if qc and not qc.reliable_for_interpretation and classification:
         findings.append(
             ReviewerFinding(
@@ -726,11 +731,80 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
             )
         )
 
-    # Check if classification has low confidence
+    # --- Check 2: Population frequency vs pathogenicity ---
+    if classification and annotation and annotation.gnomad.found:
+        af = annotation.gnomad.overall_af
+        is_pathogenic = "pathogenic" in classification.classification.value.lower()
+
+        if af is not None and af > 0.01 and is_pathogenic:
+            findings.append(
+                ReviewerFinding(
+                    claim=f"Classified as {classification.classification.value} but gnomAD AF = {af:.4f}",
+                    supported=False,
+                    source_references=["gnomAD"],
+                    concern=f"Variant has population frequency {af:.4f} (> 1%) which is "
+                            f"inconsistent with a pathogenic classification. Common variants "
+                            f"are rarely pathogenic for Mendelian disease.",
+                    hallucination_risk="high",
+                )
+            )
+
+    # --- Check 3: Computational predictions vs classification ---
+    if classification and annotation and annotation.ensembl_vep.found:
+        is_pathogenic = "pathogenic" in classification.classification.value.lower()
+        sift_tol = annotation.ensembl_vep.sift_prediction == "tolerated"
+        polyphen_ben = annotation.ensembl_vep.polyphen_prediction == "benign"
+
+        if is_pathogenic and sift_tol and polyphen_ben:
+            findings.append(
+                ReviewerFinding(
+                    claim=f"Classified as {classification.classification.value}",
+                    supported=False,
+                    source_references=["Ensembl VEP (SIFT)", "Ensembl VEP (PolyPhen)"],
+                    concern="Classification is pathogenic but both SIFT (tolerated) and "
+                            "PolyPhen (benign) predict the variant is not damaging. "
+                            "Computational evidence contradicts the classification.",
+                    hallucination_risk="medium",
+                )
+            )
+
+    # --- Check 4: ClinVar agreement ---
+    if classification and annotation and annotation.clinvar.found:
+        clinvar_sig = (annotation.clinvar.clinical_significance or "").lower()
+        our_class = classification.classification.value.lower()
+
+        clinvar_pathogenic = "pathogenic" in clinvar_sig and "benign" not in clinvar_sig
+        we_say_benign = "benign" in our_class
+        clinvar_benign = "benign" in clinvar_sig and "pathogenic" not in clinvar_sig
+        we_say_pathogenic = "pathogenic" in our_class
+
+        if (clinvar_pathogenic and we_say_benign) or (clinvar_benign and we_say_pathogenic):
+            findings.append(
+                ReviewerFinding(
+                    claim=f"Our classification: {classification.classification.value}",
+                    supported=False,
+                    source_references=["ClinVar"],
+                    concern=f"Our classification ({classification.classification.value}) "
+                            f"disagrees with ClinVar ({annotation.clinvar.clinical_significance}). "
+                            f"Review the evidence — ClinVar has {annotation.clinvar.review_stars}-star review.",
+                    hallucination_risk="high",
+                )
+            )
+        elif annotation.clinvar.clinical_significance and clinvar_sig == our_class:
+            findings.append(
+                ReviewerFinding(
+                    claim=f"Classification agrees with ClinVar: {classification.classification.value}",
+                    supported=True,
+                    source_references=["ClinVar"],
+                    hallucination_risk="low",
+                )
+            )
+
+    # --- Check 5: Low confidence ---
     if classification and classification.confidence < 0.5:
         findings.append(
             ReviewerFinding(
-                claim=f"Classification confidence: {classification.confidence}",
+                claim=f"Classification confidence: {classification.confidence:.2f}",
                 supported=True,
                 concern="Low confidence classification — insufficient evidence to "
                         "support a definitive call.",
