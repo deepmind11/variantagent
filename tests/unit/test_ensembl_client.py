@@ -96,3 +96,47 @@ class TestParseVepResponse:
         assert result.sift_prediction is None
         assert result.polyphen_prediction is None
         assert result.protein_domain is None
+
+    def test_parse_no_transcript_no_intergenic(self) -> None:
+        """No transcript and no intergenic consequences."""
+        data = [{"most_severe_consequence": "downstream_gene_variant"}]
+        result = _parse_vep_response(data)
+        assert result.found is True
+        assert result.consequence_type == "downstream_gene_variant"
+
+    def test_parse_domain_with_non_pfam(self) -> None:
+        """Domain not Pfam/InterPro falls back to first domain."""
+        data = [
+            {
+                "most_severe_consequence": "missense_variant",
+                "transcript_consequences": [
+                    {
+                        "consequence_terms": ["missense_variant"],
+                        "impact": "MODERATE",
+                        "domains": [{"db": "Gene3D", "name": "3.90.215.10"}],
+                    }
+                ],
+            }
+        ]
+        result = _parse_vep_response(data)
+        assert result.protein_domain == "3.90.215.10"
+
+    def test_parse_interpro_domain_preferred(self) -> None:
+        """InterPro domain takes precedence over first domain."""
+        data = [
+            {
+                "most_severe_consequence": "missense_variant",
+                "transcript_consequences": [
+                    {
+                        "consequence_terms": ["missense_variant"],
+                        "impact": "MODERATE",
+                        "domains": [
+                            {"db": "Gene3D", "name": "generic"},
+                            {"db": "interpro", "name": "IPR001356"},
+                        ],
+                    }
+                ],
+            }
+        ]
+        result = _parse_vep_response(data)
+        assert result.protein_domain == "IPR001356"

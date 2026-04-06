@@ -9,6 +9,7 @@ Rate limit: 55,000 requests/hour (~15/sec). Returns Retry-After headers on 429.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import httpx
 
@@ -32,7 +33,7 @@ def _build_vep_url(variant: Variant) -> str:
     )
 
 
-def _parse_vep_response(data: list[dict]) -> EnsemblVEPAnnotation:
+def _parse_vep_response(data: list[dict[str, Any]]) -> EnsemblVEPAnnotation:
     """Parse VEP JSON response into EnsemblVEPAnnotation.
 
     Uses the first result with `pick=1` to get the most severe consequence.
@@ -81,7 +82,9 @@ def _parse_vep_response(data: list[dict]) -> EnsemblVEPAnnotation:
             protein_domain = domains[0].get("name", domains[0].get("db"))
 
     return EnsemblVEPAnnotation(
-        consequence_type=csq.get("consequence_terms", [None])[0] if csq.get("consequence_terms") else record.get("most_severe_consequence"),
+        consequence_type=csq.get("consequence_terms", [None])[0]
+        if csq.get("consequence_terms")
+        else record.get("most_severe_consequence"),
         impact=csq.get("impact"),
         gene_symbol=csq.get("gene_symbol"),
         gene_id=csq.get("gene_id"),

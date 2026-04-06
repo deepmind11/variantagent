@@ -86,8 +86,8 @@ async def _esearch(client: httpx.AsyncClient, query: str) -> list[str]:
         response = await client.get(f"{EUTILS_BASE}/esearch.fcgi", params=params)
         response.raise_for_status()
 
-    data = response.json()
-    id_list = data.get("esearchresult", {}).get("idlist", [])
+    data: dict[str, Any] = response.json()
+    id_list: list[str] = data.get("esearchresult", {}).get("idlist", [])
     return id_list
 
 
@@ -105,7 +105,8 @@ async def _esummary(client: httpx.AsyncClient, uids: list[str]) -> dict[str, Any
         response = await client.get(f"{EUTILS_BASE}/esummary.fcgi", params=params)
         response.raise_for_status()
 
-    return response.json()
+    result: dict[str, Any] = response.json()
+    return result
 
 
 def _parse_esummary(data: dict[str, Any], uids: list[str]) -> ClinVarAnnotation:

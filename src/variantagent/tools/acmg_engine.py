@@ -11,7 +11,6 @@ correct classification logic. This separation ensures reproducibility.
 from variantagent.models.classification import (
     ACMGClassificationResult,
     ACMGCriteria,
-    EvidenceDirection,
     EvidenceStrength,
 )
 
@@ -132,6 +131,9 @@ def classify(criteria: ACMGCriteria) -> tuple[ACMGClassificationResult, str]:
         return ACMGClassificationResult.VUS, "Insufficient pathogenic evidence for classification"
 
     if has_benign:
-        return ACMGClassificationResult.LIKELY_BENIGN, "Benign evidence present but insufficient for definitive classification"
+        return (
+            ACMGClassificationResult.LIKELY_BENIGN,
+            "Benign evidence present but insufficient for definitive classification",
+        )
 
     return ACMGClassificationResult.VUS, "No evidence criteria met"

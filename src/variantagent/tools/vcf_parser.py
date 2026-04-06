@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from variantagent.models.variant import Variant, VariantType
+from variantagent.models.variant import Variant
 
 
 def parse_vcf(vcf_path: str | Path) -> list[Variant]:
@@ -25,7 +25,7 @@ def parse_vcf(vcf_path: str | Path) -> list[Variant]:
         raise FileNotFoundError(f"VCF file not found: {path}")
 
     try:
-        from cyvcf2 import VCF
+        from cyvcf2 import VCF  # type: ignore[import-untyped]
     except ImportError as e:
         raise ImportError(
             "cyvcf2 is required for VCF parsing. Install with: pip install cyvcf2"
@@ -50,7 +50,9 @@ def parse_vcf(vcf_path: str | Path) -> list[Variant]:
             # Extract allele frequency if available
             af_value = record.INFO.get("AF")
             if af_value is not None:
-                variant.allele_frequency = float(af_value) if not isinstance(af_value, tuple) else float(af_value[0])
+                variant.allele_frequency = (
+                    float(af_value) if not isinstance(af_value, tuple) else float(af_value[0])
+                )
 
             variants.append(variant)
 

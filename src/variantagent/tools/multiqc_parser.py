@@ -73,17 +73,13 @@ def _extract_metrics(sample_id: str, stats: dict[str, Any]) -> MultiQCMetrics:
         avg_sequence_length=_safe_float(stats.get("avg_sequence_length")),
         percent_duplicates=_safe_float(stats.get("percent_duplicates")),
         percent_fails=_safe_float(stats.get("percent_fails")),
-        mean_coverage=_safe_float(
-            stats.get("mean_coverage", stats.get("mosdepth_mean_coverage"))
-        ),
+        mean_coverage=_safe_float(stats.get("mean_coverage", stats.get("mosdepth_mean_coverage"))),
         median_coverage=_safe_float(
             stats.get("median_coverage", stats.get("mosdepth_median_coverage"))
         ),
         percent_bases_above_20x=_safe_float(stats.get("20_x_pc")),
         percent_bases_above_100x=_safe_float(stats.get("100_x_pc")),
-        insert_size_median=_safe_float(
-            stats.get("summed_median", stats.get("median_insert_size"))
-        ),
+        insert_size_median=_safe_float(stats.get("summed_median", stats.get("median_insert_size"))),
         percent_adapter=_safe_float(stats.get("percent_adapter")),
     )
 

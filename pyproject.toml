@@ -94,6 +94,14 @@ select = [
     "TCH",   # flake8-type-checking
     "RUF",   # ruff-specific
 ]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "TC001",  # move import into TYPE_CHECKING block — causes runtime issues with TypedDict
+    "TC002",  # move import into TYPE_CHECKING block
+    "TC003",  # move import into TYPE_CHECKING block
+    "SIM102", # use single if statement — nested ifs are more readable here
+    "UP042",  # use StrEnum — requires Python 3.11+, kept for compatibility
+]
 
 [tool.mypy]
 python_version = "3.11"

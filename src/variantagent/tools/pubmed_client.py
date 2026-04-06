@@ -13,7 +13,6 @@ from typing import Any
 
 import httpx
 
-from variantagent.config import settings
 from variantagent.tools.clinvar_client import _base_params, _get_ncbi_semaphore
 
 logger = logging.getLogger(__name__)
@@ -41,7 +40,9 @@ class PubMedArticle:
     def citation(self) -> str:
         """Format as a short citation."""
         first_author = self.authors[0] if self.authors else "Unknown"
-        return f"{first_author} et al. ({self.year}). {self.title}. {self.journal}. PMID: {self.pmid}"
+        return (
+            f"{first_author} et al. ({self.year}). {self.title}. {self.journal}. PMID: {self.pmid}"
+        )
 
 
 async def _esearch_pubmed(
@@ -64,8 +65,9 @@ async def _esearch_pubmed(
         response = await client.get(f"{EUTILS_BASE}/esearch.fcgi", params=params)
         response.raise_for_status()
 
-    data = response.json()
-    return data.get("esearchresult", {}).get("idlist", [])
+    data: dict[str, Any] = response.json()
+    pmids: list[str] = data.get("esearchresult", {}).get("idlist", [])
+    return pmids
 
 
 async def _esummary_pubmed(

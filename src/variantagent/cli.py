@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import re
-import sys
 
 import typer
 from rich.console import Console
@@ -20,7 +18,7 @@ app = typer.Typer(
 console = Console()
 
 
-def _parse_variant_string(variant_str: str) -> dict:
+def _parse_variant_string(variant_str: str) -> dict[str, str]:
     """Parse a variant string like 'chr17:7674220 G>A' into components."""
     # Pattern: chr17:7674220 G>A  or  17:7674220:G:A  or  chr17:7674220 G A
     patterns = [
@@ -40,9 +38,7 @@ def _parse_variant_string(variant_str: str) -> dict:
 
 @app.command()
 def analyze(
-    variant_str: str = typer.Argument(
-        help="Variant to analyze (e.g., 'chr17:7674220 G>A')"
-    ),
+    variant_str: str = typer.Argument(help="Variant to analyze (e.g., 'chr17:7674220 G>A')"),
     gene: str | None = typer.Option(None, "--gene", "-g", help="Gene symbol (e.g., TP53)"),
     sample_id: str | None = typer.Option(None, "--sample", "-s", help="Sample identifier"),
     batch_id: str | None = typer.Option(None, "--batch", "-b", help="Batch identifier"),
@@ -90,20 +86,26 @@ def analyze(
             "Benign": "green",
         }.get(cls.classification.value, "white")
 
-        console.print(Panel(
-            f"[bold {color}]{cls.classification.value}[/bold {color}]\n"
-            f"Confidence: {report.overall_confidence:.0%}\n"
-            f"Rule: {cls.classification_rule}\n"
-            f"Evidence codes: {', '.join(cls.applied_codes_summary) or 'none'}",
-            title="[bold]Classification[/bold]",
-            border_style=color,
-        ))
+        console.print(
+            Panel(
+                f"[bold {color}]{cls.classification.value}[/bold {color}]\n"
+                f"Confidence: {report.overall_confidence:.0%}\n"
+                f"Rule: {cls.classification_rule}\n"
+                f"Evidence codes: {', '.join(cls.applied_codes_summary) or 'none'}",
+                title="[bold]Classification[/bold]",
+                border_style=color,
+            )
+        )
 
     # QC Assessment
     if report.qc_assessment:
         qc = report.qc_assessment
-        qc_color = {"pass": "green", "warn": "yellow", "fail": "red"}.get(qc.overall_status.value, "white")
-        console.print(f"\n[bold]QC Status:[/bold] [{qc_color}]{qc.overall_status.value.upper()}[/{qc_color}]")
+        qc_color = {"pass": "green", "warn": "yellow", "fail": "red"}.get(
+            qc.overall_status.value, "white"
+        )
+        console.print(
+            f"\n[bold]QC Status:[/bold] [{qc_color}]{qc.overall_status.value.upper()}[/{qc_color}]"
+        )
         if qc.issues:
             for issue in qc.issues:
                 console.print(f"  [{qc_color}]•[/{qc_color}] {issue.metric}: {issue.description}")
@@ -116,7 +118,9 @@ def analyze(
         table.add_column("Result")
 
         if ann.clinvar.found:
-            table.add_row("ClinVar", f"{ann.clinvar.clinical_significance} ({ann.clinvar.review_stars}★)")
+            table.add_row(
+                "ClinVar", f"{ann.clinvar.clinical_significance} ({ann.clinvar.review_stars}★)"
+            )
         else:
             table.add_row("ClinVar", "[dim]Not found[/dim]")
 

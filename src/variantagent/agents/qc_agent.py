@@ -12,6 +12,7 @@ Distinct Because: Only agent that touches raw QC data. Has domain-specific thres
 from __future__ import annotations
 
 import logging
+from typing import TypedDict
 
 from variantagent.models.qc_metrics import (
     FlagstatMetrics,
@@ -23,9 +24,16 @@ from variantagent.models.qc_metrics import (
 
 logger = logging.getLogger(__name__)
 
+
+class _QCThreshold(TypedDict):
+    fail: float
+    warn: float
+    description: str
+
+
 # Domain-specific thresholds from clinical genomics production experience
 # These encode knowledge from triaging thousands of real samples
-QC_THRESHOLDS = {
+QC_THRESHOLDS: dict[str, _QCThreshold] = {
     "min_coverage": {
         "fail": 20,
         "warn": 50,
@@ -180,7 +188,9 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["min_mapping_rate"]["fail"],
                 severity=QCStatus.FAIL,
                 description=str(taxonomy["description"]),
-                likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
+                likely_causes=[str(c) for c in taxonomy["likely_causes"]]
+                if isinstance(taxonomy["likely_causes"], list)
+                else [str(taxonomy["likely_causes"])],
                 recommended_action=str(taxonomy["recommended_action"]),
             )
         )
@@ -207,7 +217,9 @@ def assess_flagstat(flagstat: FlagstatMetrics) -> list[QCIssue]:
                 threshold=QC_THRESHOLDS["max_duplication_rate"]["fail"],
                 severity=QCStatus.FAIL,
                 description=str(taxonomy["description"]),
-                likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
+                likely_causes=[str(c) for c in taxonomy["likely_causes"]]
+                if isinstance(taxonomy["likely_causes"], list)
+                else [str(taxonomy["likely_causes"])],
                 recommended_action=str(taxonomy["recommended_action"]),
             )
         )
@@ -295,7 +307,9 @@ def assess_multiqc(multiqc: MultiQCMetrics) -> list[QCIssue]:
                     threshold=QC_THRESHOLDS["min_coverage"]["fail"],
                     severity=QCStatus.FAIL,
                     description=str(taxonomy["description"]),
-                    likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
+                    likely_causes=[str(c) for c in taxonomy["likely_causes"]]
+                    if isinstance(taxonomy["likely_causes"], list)
+                    else [str(taxonomy["likely_causes"])],
                     recommended_action=str(taxonomy["recommended_action"]),
                 )
             )
@@ -323,7 +337,9 @@ def assess_multiqc(multiqc: MultiQCMetrics) -> list[QCIssue]:
                 threshold=5.0,
                 severity=severity,
                 description=str(taxonomy["description"]),
-                likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
+                likely_causes=[str(c) for c in taxonomy["likely_causes"]]
+                if isinstance(taxonomy["likely_causes"], list)
+                else [str(taxonomy["likely_causes"])],
                 recommended_action=str(taxonomy["recommended_action"]),
             )
         )
@@ -370,7 +386,9 @@ def run_qc_assessment(
                     threshold=QC_THRESHOLDS["min_variant_position_coverage"]["fail"],
                     severity=QCStatus.FAIL,
                     description=str(taxonomy["description"]),
-                    likely_causes=[str(c) for c in taxonomy["likely_causes"]] if isinstance(taxonomy["likely_causes"], list) else [str(taxonomy["likely_causes"])],
+                    likely_causes=[str(c) for c in taxonomy["likely_causes"]]
+                    if isinstance(taxonomy["likely_causes"], list)
+                    else [str(taxonomy["likely_causes"])],
                     recommended_action=str(taxonomy["recommended_action"]),
                 )
             )
@@ -400,7 +418,10 @@ def run_qc_assessment(
 
     # Determine if QC supports reliable interpretation
     reliable = not has_fail
-    if variant_region_coverage is not None and variant_region_coverage < QC_THRESHOLDS["min_variant_position_coverage"]["fail"]:
+    if (
+        variant_region_coverage is not None
+        and variant_region_coverage < QC_THRESHOLDS["min_variant_position_coverage"]["fail"]
+    ):
         reliable = False
 
     # Build reasoning summary
@@ -420,7 +441,9 @@ def run_qc_assessment(
         else:
             reasoning += "Issues are warnings only — interpretation can proceed with caution."
 
-    logger.info("QC assessment for %s: %s (%d issues)", sample_id, overall_status.value, len(all_issues))
+    logger.info(
+        "QC assessment for %s: %s (%d issues)", sample_id, overall_status.value, len(all_issues)
+    )
 
     return QCAssessment(
         sample_id=sample_id,

@@ -25,7 +25,7 @@ async def health() -> HealthResponse:
 
 
 @app.post("/analyze")
-async def analyze(variant_input: VariantInput) -> dict:
+async def analyze(variant_input: VariantInput) -> dict[str, str]:
     """Analyze variants using the multi-agent system.
 
     Accepts either a VCF file path or manually specified variants.

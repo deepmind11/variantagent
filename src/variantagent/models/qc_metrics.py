@@ -77,6 +77,4 @@ class QCAssessment(BaseModel):
         default=True,
         description="Whether QC supports reliable variant interpretation",
     )
-    reasoning: str = Field(
-        default="", description="QC Agent's reasoning about the assessment"
-    )
+    reasoning: str = Field(default="", description="QC Agent's reasoning about the assessment")

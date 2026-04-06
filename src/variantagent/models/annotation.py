@@ -21,12 +21,8 @@ class ClinVarAnnotation(BaseModel):
     conditions: list[str] = Field(
         default_factory=list, description="Associated conditions/diseases"
     )
-    submitter_count: int | None = Field(
-        default=None, ge=0, description="Number of submitters"
-    )
-    last_evaluated: str | None = Field(
-        default=None, description="Date of last evaluation"
-    )
+    submitter_count: int | None = Field(default=None, ge=0, description="Number of submitters")
+    last_evaluated: str | None = Field(default=None, description="Date of last evaluation")
     found: bool = Field(default=False, description="Whether variant was found in ClinVar")
 
 

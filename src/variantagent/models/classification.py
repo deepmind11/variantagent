@@ -24,9 +24,7 @@ class EvidenceDirection(str, Enum):
 class EvidenceCode(BaseModel):
     """A single ACMG evidence criterion assessment."""
 
-    code: str = Field(
-        ..., description="ACMG evidence code (e.g., 'PVS1', 'PS1', 'PM2', 'BA1')"
-    )
+    code: str = Field(..., description="ACMG evidence code (e.g., 'PVS1', 'PS1', 'PM2', 'BA1')")
     name: str = Field(..., description="Human-readable name of the criterion")
     direction: EvidenceDirection = Field(..., description="Pathogenic or benign evidence")
     strength: EvidenceStrength = Field(..., description="Evidence strength level")
@@ -52,25 +50,53 @@ class ACMGCriteria(BaseModel):
     """Complete set of ACMG criteria evaluated for a variant."""
 
     # Pathogenic criteria
-    pvs1: EvidenceCode | None = Field(default=None, description="Null variant in gene where LOF is known mechanism")
-    ps1: EvidenceCode | None = Field(default=None, description="Same amino acid change as established pathogenic")
+    pvs1: EvidenceCode | None = Field(
+        default=None, description="Null variant in gene where LOF is known mechanism"
+    )
+    ps1: EvidenceCode | None = Field(
+        default=None, description="Same amino acid change as established pathogenic"
+    )
     ps3: EvidenceCode | None = Field(default=None, description="Functional studies supportive")
-    pm1: EvidenceCode | None = Field(default=None, description="In mutational hot spot / functional domain")
+    pm1: EvidenceCode | None = Field(
+        default=None, description="In mutational hot spot / functional domain"
+    )
     pm2: EvidenceCode | None = Field(default=None, description="Absent from population databases")
-    pm4: EvidenceCode | None = Field(default=None, description="Protein length change from in-frame indel")
-    pm5: EvidenceCode | None = Field(default=None, description="Novel missense at position with known pathogenic")
-    pp2: EvidenceCode | None = Field(default=None, description="Missense in gene with low rate of benign missense")
-    pp3: EvidenceCode | None = Field(default=None, description="Computational evidence supports deleterious")
-    pp5: EvidenceCode | None = Field(default=None, description="Reputable source reports pathogenic")
+    pm4: EvidenceCode | None = Field(
+        default=None, description="Protein length change from in-frame indel"
+    )
+    pm5: EvidenceCode | None = Field(
+        default=None, description="Novel missense at position with known pathogenic"
+    )
+    pp2: EvidenceCode | None = Field(
+        default=None, description="Missense in gene with low rate of benign missense"
+    )
+    pp3: EvidenceCode | None = Field(
+        default=None, description="Computational evidence supports deleterious"
+    )
+    pp5: EvidenceCode | None = Field(
+        default=None, description="Reputable source reports pathogenic"
+    )
 
     # Benign criteria
-    ba1: EvidenceCode | None = Field(default=None, description="Allele frequency > 5% (standalone benign)")
-    bs1: EvidenceCode | None = Field(default=None, description="Allele frequency greater than expected for disorder")
-    bs2: EvidenceCode | None = Field(default=None, description="Observed in healthy adult (dominant) or homozygous (recessive)")
-    bp1: EvidenceCode | None = Field(default=None, description="Missense in gene where truncating is mechanism")
-    bp4: EvidenceCode | None = Field(default=None, description="Computational evidence supports benign")
+    ba1: EvidenceCode | None = Field(
+        default=None, description="Allele frequency > 5% (standalone benign)"
+    )
+    bs1: EvidenceCode | None = Field(
+        default=None, description="Allele frequency greater than expected for disorder"
+    )
+    bs2: EvidenceCode | None = Field(
+        default=None, description="Observed in healthy adult (dominant) or homozygous (recessive)"
+    )
+    bp1: EvidenceCode | None = Field(
+        default=None, description="Missense in gene where truncating is mechanism"
+    )
+    bp4: EvidenceCode | None = Field(
+        default=None, description="Computational evidence supports benign"
+    )
     bp6: EvidenceCode | None = Field(default=None, description="Reputable source reports benign")
-    bp7: EvidenceCode | None = Field(default=None, description="Silent variant with no splicing impact")
+    bp7: EvidenceCode | None = Field(
+        default=None, description="Silent variant with no splicing impact"
+    )
 
     def get_applied_codes(self) -> list[EvidenceCode]:
         """Return all criteria that were applied (met)."""

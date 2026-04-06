@@ -34,7 +34,7 @@ from typing_extensions import TypedDict
 from variantagent.agents.qc_agent import run_qc_assessment
 from variantagent.config import settings
 from variantagent.models.annotation import VariantAnnotation
-from variantagent.models.classification import ACMGClassification
+from variantagent.models.classification import ACMGClassification, ACMGCriteria
 from variantagent.models.qc_metrics import QCAssessment, QCStatus
 from variantagent.models.report import ProvenanceEntry, ReviewerFinding, TriageReport
 from variantagent.models.variant import Variant
@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
+
 
 class AnalysisState(TypedDict):
     """LangGraph state for the variant analysis workflow.
@@ -110,6 +111,7 @@ def create_initial_state(
 # Node functions — each receives state, returns partial state update
 # ---------------------------------------------------------------------------
 
+
 def plan_node(state: AnalysisState) -> dict[str, Any]:
     """Create an analysis plan based on the variant and available data."""
     start = time.time()
@@ -123,7 +125,9 @@ def plan_node(state: AnalysisState) -> dict[str, Any]:
     # Plan literature search if gene is known
     if variant.gene:
         plan.append(f"3. Search PubMed for {variant.gene} variant evidence")
-        plan.append(f"4. Apply ACMG criteria for {variant.gene}:{variant.hgvs_p or variant.variant_id}")
+        plan.append(
+            f"4. Apply ACMG criteria for {variant.gene}:{variant.hgvs_p or variant.variant_id}"
+        )
     else:
         plan.append("3. Apply ACMG criteria (gene unknown — limited criteria available)")
 
@@ -159,7 +163,7 @@ def qc_node(state: AnalysisState) -> dict[str, Any]:
     qc_assessment = run_qc_assessment(
         sample_id=sample_id,
         flagstat=None,  # TODO: load from file path when available
-        multiqc=None,   # TODO: load from file path when available
+        multiqc=None,  # TODO: load from file path when available
         variant_region_coverage=state["variant"].depth,
     )
 
@@ -170,7 +174,7 @@ def qc_node(state: AnalysisState) -> dict[str, Any]:
         action="QC assessment",
         input_summary=f"Sample: {sample_id}",
         output_summary=f"Status: {qc_assessment.overall_status.value}, "
-                       f"{len(qc_assessment.issues)} issues",
+        f"{len(qc_assessment.issues)} issues",
         duration_ms=duration_ms,
     )
 
@@ -194,7 +198,6 @@ def annotation_node(state: AnalysisState) -> dict[str, Any]:
     then gnomAD sequentially (aggressive rate limiting).
     If any API fails, continues with the others (graceful degradation).
     """
-    import asyncio
 
     start = time.time()
     variant = state["variant"]
@@ -245,8 +248,15 @@ def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str]
     """
     import httpx
 
-    from variantagent.tools.clinvar_client import ClinVarAnnotation, _build_query, _esearch, _esummary, _parse_esummary
-    from variantagent.models.annotation import EnsemblVEPAnnotation, GnomADFrequency
+    from variantagent.models.annotation import (
+        ClinVarAnnotation,
+        EnsemblVEPAnnotation,
+        GnomADFrequency,
+    )
+    from variantagent.tools.clinvar_client import (
+        _build_query,
+        _parse_esummary,
+    )
 
     errors: list[str] = []
     sources: list[str] = ["ClinVar", "Ensembl VEP", "gnomAD"]
@@ -258,12 +268,15 @@ def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str]
     with httpx.Client(timeout=30.0) as client:
         # ClinVar (sync)
         try:
-            from variantagent.tools.clinvar_client import _base_params, EUTILS_BASE
+            from variantagent.tools.clinvar_client import EUTILS_BASE, _base_params
 
             query = _build_query(variant)
             search_params = {
                 **_base_params(),
-                "db": "clinvar", "term": query, "retmode": "json", "retmax": "5",
+                "db": "clinvar",
+                "term": query,
+                "retmode": "json",
+                "retmax": "5",
             }
             resp = client.get(f"{EUTILS_BASE}/esearch.fcgi", params=search_params)
             resp.raise_for_status()
@@ -272,7 +285,9 @@ def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str]
             if uids:
                 summary_params = {
                     **_base_params(),
-                    "db": "clinvar", "id": ",".join(uids), "retmode": "json",
+                    "db": "clinvar",
+                    "id": ",".join(uids),
+                    "retmode": "json",
                 }
                 resp = client.get(f"{EUTILS_BASE}/esummary.fcgi", params=summary_params)
                 resp.raise_for_status()
@@ -288,8 +303,12 @@ def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str]
             url = _build_vep_url(variant)
             params = {
                 "content-type": "application/json",
-                "pick": "1", "SIFT": "b", "PolyPhen": "b",
-                "domains": "1", "canonical": "1", "hgvs": "1",
+                "pick": "1",
+                "SIFT": "b",
+                "PolyPhen": "b",
+                "domains": "1",
+                "canonical": "1",
+                "hgvs": "1",
             }
             resp = client.get(url, params=params, headers={"Content-Type": "application/json"})
             if resp.status_code != 429:
@@ -302,7 +321,10 @@ def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str]
         # gnomAD (sync — GraphQL POST)
         try:
             from variantagent.tools.gnomad_client import (
-                GNOMAD_API, VARIANT_QUERY, _build_variant_id, _parse_gnomad_response,
+                GNOMAD_API,
+                VARIANT_QUERY,
+                _build_variant_id,
+                _parse_gnomad_response,
             )
 
             payload = {
@@ -310,7 +332,8 @@ def _run_annotation_sync(variant: Variant) -> tuple[VariantAnnotation, list[str]
                 "variables": {"variantId": _build_variant_id(variant), "datasetId": "gnomad_r4"},
             }
             resp = client.post(
-                GNOMAD_API, json=payload,
+                GNOMAD_API,
+                json=payload,
                 headers={"Content-Type": "application/json"},
             )
             resp.raise_for_status()
@@ -337,7 +360,6 @@ def literature_node(state: AnalysisState) -> dict[str, Any]:
     Uses progressive broadening: gene + HGVS → gene + protein change → gene + disease.
     RAG over ACMG guidelines will be added in a future step.
     """
-    import asyncio
 
     start = time.time()
     variant = state["variant"]
@@ -375,20 +397,18 @@ def literature_node(state: AnalysisState) -> dict[str, Any]:
 
     # Update annotation with PubMed references
     if pmids and state["annotation"]:
-        updated_annotation = state["annotation"].model_copy(
-            update={"pubmed_references": pmids}
-        )
+        updated_annotation = state["annotation"].model_copy(update={"pubmed_references": pmids})
         result["annotation"] = updated_annotation
 
     return result
 
 
-def _run_literature_search_sync(variant: Variant) -> tuple[list, str | None]:
+def _run_literature_search_sync(variant: Variant) -> tuple[list[Any], str | None]:
     """Run PubMed search synchronously."""
     import httpx
 
+    from variantagent.tools.clinvar_client import EUTILS_BASE, _base_params
     from variantagent.tools.pubmed_client import PubMedArticle, _build_search_queries
-    from variantagent.tools.clinvar_client import _base_params, EUTILS_BASE
 
     if not variant.gene:
         return [], None
@@ -406,8 +426,11 @@ def _run_literature_search_sync(variant: Variant) -> tuple[list, str | None]:
                     break
                 params = {
                     **_base_params(),
-                    "db": "pubmed", "term": query, "retmode": "json",
-                    "retmax": "5", "sort": "relevance",
+                    "db": "pubmed",
+                    "term": query,
+                    "retmode": "json",
+                    "retmax": "5",
+                    "sort": "relevance",
                 }
                 resp = client.get(f"{EUTILS_BASE}/esearch.fcgi", params=params)
                 resp.raise_for_status()
@@ -420,7 +443,9 @@ def _run_literature_search_sync(variant: Variant) -> tuple[list, str | None]:
             if all_pmids:
                 params = {
                     **_base_params(),
-                    "db": "pubmed", "id": ",".join(all_pmids), "retmode": "json",
+                    "db": "pubmed",
+                    "id": ",".join(all_pmids),
+                    "retmode": "json",
                 }
                 resp = client.get(f"{EUTILS_BASE}/esummary.fcgi", params=params)
                 resp.raise_for_status()
@@ -430,13 +455,15 @@ def _run_literature_search_sync(variant: Variant) -> tuple[list, str | None]:
                     record = result.get(pmid, {})
                     if record and "error" not in record:
                         authors = [a.get("name", "") for a in record.get("authors", [])]
-                        articles.append(PubMedArticle(
-                            pmid=pmid,
-                            title=record.get("title", ""),
-                            journal=record.get("fulljournalname", ""),
-                            year=record.get("pubdate", "")[:4],
-                            authors=authors,
-                        ))
+                        articles.append(
+                            PubMedArticle(
+                                pmid=pmid,
+                                title=record.get("title", ""),
+                                journal=record.get("fulljournalname", ""),
+                                year=record.get("pubdate", "")[:4],
+                                authors=authors,
+                            )
+                        )
 
         return articles, None
     except Exception as e:
@@ -462,9 +489,6 @@ def classification_node(state: AnalysisState) -> dict[str, Any]:
     from variantagent.models.classification import (
         ACMGClassification,
         ACMGCriteria,
-        EvidenceCode,
-        EvidenceDirection,
-        EvidenceStrength,
     )
     from variantagent.tools.acmg_engine import classify as acmg_classify
 
@@ -507,10 +531,10 @@ def classification_node(state: AnalysisState) -> dict[str, Any]:
         agent="classification_agent",
         action="ACMG classification",
         input_summary=f"Variant: {variant.variant_id}, "
-                      f"ClinVar: {annotation.clinvar.found if annotation else 'N/A'}, "
-                      f"gnomAD AF: {annotation.gnomad.overall_af if annotation and annotation.gnomad.found else 'N/A'}",
+        f"ClinVar: {annotation.clinvar.found if annotation else 'N/A'}, "
+        f"gnomAD AF: {annotation.gnomad.overall_af if annotation and annotation.gnomad.found else 'N/A'}",
         output_summary=f"{classification_result.value} ({', '.join(applied_summary) or 'no criteria met'}) "
-                       f"confidence: {confidence:.2f}",
+        f"confidence: {confidence:.2f}",
         duration_ms=duration_ms,
     )
 
@@ -532,7 +556,7 @@ def classification_node(state: AnalysisState) -> dict[str, Any]:
 def _evaluate_criteria_from_evidence(
     variant: Variant,
     annotation: VariantAnnotation,
-) -> "ACMGCriteria":
+) -> ACMGCriteria:
     """Evaluate ACMG criteria deterministically from annotation evidence.
 
     These criteria can be assessed without LLM judgment — they depend on
@@ -551,41 +575,53 @@ def _evaluate_criteria_from_evidence(
     if annotation.gnomad.found and annotation.gnomad.overall_af is not None:
         if annotation.gnomad.overall_af > 0.05:
             kwargs["ba1"] = EvidenceCode(
-                code="BA1", name="Allele frequency > 5%",
-                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.VERY_STRONG,
+                code="BA1",
+                name="Allele frequency > 5%",
+                direction=EvidenceDirection.BENIGN,
+                strength=EvidenceStrength.VERY_STRONG,
                 applied=True,
                 reasoning=f"gnomAD overall AF = {annotation.gnomad.overall_af:.4f} (> 0.05 threshold)",
-                data_source="gnomAD", confidence=0.99,
+                data_source="gnomAD",
+                confidence=0.99,
             )
 
     # --- BS1: Allele frequency greater than expected for disorder ---
     if annotation.gnomad.found and annotation.gnomad.overall_af is not None:
         if 0.01 < annotation.gnomad.overall_af <= 0.05:
             kwargs["bs1"] = EvidenceCode(
-                code="BS1", name="Allele frequency greater than expected",
-                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.STRONG,
+                code="BS1",
+                name="Allele frequency greater than expected",
+                direction=EvidenceDirection.BENIGN,
+                strength=EvidenceStrength.STRONG,
                 applied=True,
                 reasoning=f"gnomAD overall AF = {annotation.gnomad.overall_af:.4f} (> 0.01, suggesting common variant)",
-                data_source="gnomAD", confidence=0.90,
+                data_source="gnomAD",
+                confidence=0.90,
             )
 
     # --- PM2: Absent from population databases ---
     if annotation.gnomad.found and annotation.gnomad.overall_af is not None:
         if annotation.gnomad.overall_af < 0.0001:
             kwargs["pm2"] = EvidenceCode(
-                code="PM2", name="Absent/extremely low frequency in population databases",
-                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.MODERATE,
+                code="PM2",
+                name="Absent/extremely low frequency in population databases",
+                direction=EvidenceDirection.PATHOGENIC,
+                strength=EvidenceStrength.MODERATE,
                 applied=True,
                 reasoning=f"gnomAD overall AF = {annotation.gnomad.overall_af:.6f} (< 0.0001 threshold)",
-                data_source="gnomAD", confidence=0.85,
+                data_source="gnomAD",
+                confidence=0.85,
             )
     elif annotation.gnomad.found is False:
         kwargs["pm2"] = EvidenceCode(
-            code="PM2", name="Absent from population databases",
-            direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.MODERATE,
+            code="PM2",
+            name="Absent from population databases",
+            direction=EvidenceDirection.PATHOGENIC,
+            strength=EvidenceStrength.MODERATE,
             applied=True,
             reasoning="Variant not found in gnomAD — absent from population databases",
-            data_source="gnomAD", confidence=0.80,
+            data_source="gnomAD",
+            confidence=0.80,
         )
 
     # --- PP5: Reputable source reports pathogenic ---
@@ -595,20 +631,26 @@ def _evaluate_criteria_from_evidence(
 
         if "pathogenic" in sig and "likely" not in sig and stars >= 2:
             kwargs["pp5"] = EvidenceCode(
-                code="PP5", name="Reputable source reports pathogenic",
-                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.SUPPORTING,
+                code="PP5",
+                name="Reputable source reports pathogenic",
+                direction=EvidenceDirection.PATHOGENIC,
+                strength=EvidenceStrength.SUPPORTING,
                 applied=True,
                 reasoning=f"ClinVar: '{annotation.clinvar.clinical_significance}' "
-                          f"({stars}-star review, {annotation.clinvar.submitter_count} submitters)",
-                data_source="ClinVar", confidence=0.90,
+                f"({stars}-star review, {annotation.clinvar.submitter_count} submitters)",
+                data_source="ClinVar",
+                confidence=0.90,
             )
         elif "likely pathogenic" in sig and stars >= 2:
             kwargs["pp5"] = EvidenceCode(
-                code="PP5", name="Reputable source reports likely pathogenic",
-                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.SUPPORTING,
+                code="PP5",
+                name="Reputable source reports likely pathogenic",
+                direction=EvidenceDirection.PATHOGENIC,
+                strength=EvidenceStrength.SUPPORTING,
                 applied=True,
                 reasoning=f"ClinVar: '{annotation.clinvar.clinical_significance}' ({stars}-star review)",
-                data_source="ClinVar", confidence=0.80,
+                data_source="ClinVar",
+                confidence=0.80,
             )
 
     # --- BP6: Reputable source reports benign ---
@@ -618,29 +660,36 @@ def _evaluate_criteria_from_evidence(
 
         if ("benign" in sig or "likely benign" in sig) and stars >= 2:
             kwargs["bp6"] = EvidenceCode(
-                code="BP6", name="Reputable source reports benign",
-                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.SUPPORTING,
+                code="BP6",
+                name="Reputable source reports benign",
+                direction=EvidenceDirection.BENIGN,
+                strength=EvidenceStrength.SUPPORTING,
                 applied=True,
                 reasoning=f"ClinVar: '{annotation.clinvar.clinical_significance}' ({stars}-star review)",
-                data_source="ClinVar", confidence=0.90,
+                data_source="ClinVar",
+                confidence=0.90,
             )
 
     # --- PP3: Computational evidence supports deleterious ---
     if annotation.ensembl_vep.found:
         sift_del = annotation.ensembl_vep.sift_prediction == "deleterious"
         polyphen_dam = annotation.ensembl_vep.polyphen_prediction in (
-            "probably_damaging", "possibly_damaging"
+            "probably_damaging",
+            "possibly_damaging",
         )
         if sift_del and polyphen_dam:
             kwargs["pp3"] = EvidenceCode(
-                code="PP3", name="Computational evidence supports deleterious",
-                direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.SUPPORTING,
+                code="PP3",
+                name="Computational evidence supports deleterious",
+                direction=EvidenceDirection.PATHOGENIC,
+                strength=EvidenceStrength.SUPPORTING,
                 applied=True,
                 reasoning=f"SIFT: {annotation.ensembl_vep.sift_prediction} "
-                          f"(score: {annotation.ensembl_vep.sift_score}), "
-                          f"PolyPhen: {annotation.ensembl_vep.polyphen_prediction} "
-                          f"(score: {annotation.ensembl_vep.polyphen_score})",
-                data_source="Ensembl VEP", confidence=0.70,
+                f"(score: {annotation.ensembl_vep.sift_score}), "
+                f"PolyPhen: {annotation.ensembl_vep.polyphen_prediction} "
+                f"(score: {annotation.ensembl_vep.polyphen_score})",
+                data_source="Ensembl VEP",
+                confidence=0.70,
             )
 
     # --- BP4: Computational evidence supports benign ---
@@ -649,22 +698,28 @@ def _evaluate_criteria_from_evidence(
         polyphen_ben = annotation.ensembl_vep.polyphen_prediction == "benign"
         if sift_tol and polyphen_ben:
             kwargs["bp4"] = EvidenceCode(
-                code="BP4", name="Computational evidence supports benign",
-                direction=EvidenceDirection.BENIGN, strength=EvidenceStrength.SUPPORTING,
+                code="BP4",
+                name="Computational evidence supports benign",
+                direction=EvidenceDirection.BENIGN,
+                strength=EvidenceStrength.SUPPORTING,
                 applied=True,
                 reasoning=f"SIFT: tolerated (score: {annotation.ensembl_vep.sift_score}), "
-                          f"PolyPhen: benign (score: {annotation.ensembl_vep.polyphen_score})",
-                data_source="Ensembl VEP", confidence=0.70,
+                f"PolyPhen: benign (score: {annotation.ensembl_vep.polyphen_score})",
+                data_source="Ensembl VEP",
+                confidence=0.70,
             )
 
     # --- PM1: Located in mutational hot spot / functional domain ---
     if annotation.ensembl_vep.found and annotation.ensembl_vep.protein_domain:
         kwargs["pm1"] = EvidenceCode(
-            code="PM1", name="Located in mutational hot spot / functional domain",
-            direction=EvidenceDirection.PATHOGENIC, strength=EvidenceStrength.MODERATE,
+            code="PM1",
+            name="Located in mutational hot spot / functional domain",
+            direction=EvidenceDirection.PATHOGENIC,
+            strength=EvidenceStrength.MODERATE,
             applied=True,
             reasoning=f"Variant falls in protein domain: {annotation.ensembl_vep.protein_domain}",
-            data_source="Ensembl VEP", confidence=0.65,
+            data_source="Ensembl VEP",
+            confidence=0.65,
         )
 
     return ACMGCriteria(**kwargs)
@@ -672,7 +727,7 @@ def _evaluate_criteria_from_evidence(
 
 def _calculate_confidence(
     annotation: VariantAnnotation | None,
-    criteria: "ACMGCriteria",
+    criteria: ACMGCriteria,
 ) -> float:
     """Calculate confidence score based on evidence completeness.
 
@@ -726,7 +781,7 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
                 claim=f"Variant classified as {classification.classification.value}",
                 supported=False,
                 concern="QC assessment indicates variant call may not be reliable, "
-                        "but classification was still performed. Interpret with extreme caution.",
+                "but classification was still performed. Interpret with extreme caution.",
                 hallucination_risk="high",
             )
         )
@@ -743,8 +798,8 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
                     supported=False,
                     source_references=["gnomAD"],
                     concern=f"Variant has population frequency {af:.4f} (> 1%) which is "
-                            f"inconsistent with a pathogenic classification. Common variants "
-                            f"are rarely pathogenic for Mendelian disease.",
+                    f"inconsistent with a pathogenic classification. Common variants "
+                    f"are rarely pathogenic for Mendelian disease.",
                     hallucination_risk="high",
                 )
             )
@@ -762,8 +817,8 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
                     supported=False,
                     source_references=["Ensembl VEP (SIFT)", "Ensembl VEP (PolyPhen)"],
                     concern="Classification is pathogenic but both SIFT (tolerated) and "
-                            "PolyPhen (benign) predict the variant is not damaging. "
-                            "Computational evidence contradicts the classification.",
+                    "PolyPhen (benign) predict the variant is not damaging. "
+                    "Computational evidence contradicts the classification.",
                     hallucination_risk="medium",
                 )
             )
@@ -785,8 +840,8 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
                     supported=False,
                     source_references=["ClinVar"],
                     concern=f"Our classification ({classification.classification.value}) "
-                            f"disagrees with ClinVar ({annotation.clinvar.clinical_significance}). "
-                            f"Review the evidence — ClinVar has {annotation.clinvar.review_stars}-star review.",
+                    f"disagrees with ClinVar ({annotation.clinvar.clinical_significance}). "
+                    f"Review the evidence — ClinVar has {annotation.clinvar.review_stars}-star review.",
                     hallucination_risk="high",
                 )
             )
@@ -807,7 +862,7 @@ def review_node(state: AnalysisState) -> dict[str, Any]:
                 claim=f"Classification confidence: {classification.confidence:.2f}",
                 supported=True,
                 concern="Low confidence classification — insufficient evidence to "
-                        "support a definitive call.",
+                "support a definitive call.",
                 hallucination_risk="medium",
             )
         )
@@ -848,26 +903,32 @@ def hitl_node(state: AnalysisState) -> dict[str, Any]:
     Pauses execution and presents findings for human review.
     Resumes when the human provides a decision via Command(resume=...).
     """
-    human_decision = interrupt({
-        "variant": state["variant"].variant_id,
-        "classification": state["classification"].classification.value if state["classification"] else "unknown",
-        "confidence": state["overall_confidence"],
-        "reason": state["human_review_reason"],
-        "reviewer_concerns": [f.concern for f in state["reviewer_findings"] if f.concern],
-        "prompt": "Review the classification and concerns above. "
-                  "Respond with {'approve': true/false, 'override_classification': '...' (optional)}",
-    })
+    human_decision = interrupt(
+        {
+            "variant": state["variant"].variant_id,
+            "classification": state["classification"].classification.value
+            if state["classification"]
+            else "unknown",
+            "confidence": state["overall_confidence"],
+            "reason": state["human_review_reason"],
+            "reviewer_concerns": [f.concern for f in state["reviewer_findings"] if f.concern],
+            "prompt": "Review the classification and concerns above. "
+            "Respond with {'approve': true/false, 'override_classification': '...' (optional)}",
+        }
+    )
 
     # Process human decision
     approved = human_decision.get("approve", False) if isinstance(human_decision, dict) else False
-    override = human_decision.get("override_classification") if isinstance(human_decision, dict) else None
+    override = (
+        human_decision.get("override_classification") if isinstance(human_decision, dict) else None
+    )
 
     provenance_entry = ProvenanceEntry(
         step=7,
         agent="human",
         action="Human review checkpoint",
         input_summary=f"Confidence: {state['overall_confidence']:.2f}, "
-                      f"{len(state['reviewer_findings'])} concerns",
+        f"{len(state['reviewer_findings'])} concerns",
         output_summary=f"Approved: {approved}, Override: {override or 'none'}",
     )
 
@@ -894,8 +955,6 @@ def hitl_node(state: AnalysisState) -> dict[str, Any]:
 
 def report_node(state: AnalysisState) -> dict[str, Any]:
     """Generate the final TriageReport with full provenance."""
-    start = time.time()
-
     report = TriageReport(
         trace_id=state["trace_id"],
         variant=state["variant"],
@@ -931,12 +990,18 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
     )
 
     if qc_aborted:
+        _qc = state["qc_assessment"]
+        _rec = (
+            _qc.issues[0].recommended_action
+            if _qc is not None and _qc.issues
+            else "review QC metrics"
+        )
         report.natural_language_summary = (
             f"Variant {state['variant'].variant_id} "
             f"(gene: {state['variant'].gene or 'unknown'}) "
             f"was NOT assessed due to QC failure (status: {qc_text}). "
             f"Variant interpretation was skipped because the sequencing data "
-            f"is unreliable. Recommended action: {state['qc_assessment'].issues[0].recommended_action if state['qc_assessment'].issues else 'review QC metrics'}."
+            f"is unreliable. Recommended action: {_rec}."
         )
     else:
         classification_text = "Uncertain Significance"
@@ -952,8 +1017,6 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
             f"{len(state['reviewer_findings'])} reviewer concern(s)."
         )
 
-    duration_ms = int((time.time() - start) * 1000)
-
     logger.info(
         "Report generated for %s: %s (confidence: %.2f)",
         state["variant"].variant_id,
@@ -967,6 +1030,7 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Routing functions — decide which node to go to next
 # ---------------------------------------------------------------------------
+
 
 def route_after_qc(state: AnalysisState) -> str:
     """Decide what to do after QC assessment.
@@ -1010,7 +1074,8 @@ def route_after_review(state: AnalysisState) -> str:
 # Graph construction
 # ---------------------------------------------------------------------------
 
-def build_graph(checkpointer: Any | None = None) -> StateGraph:
+
+def build_graph(checkpointer: Any | None = None) -> Any:
     """Build and compile the VariantAgent LangGraph workflow.
 
     Args:
@@ -1073,6 +1138,7 @@ def build_graph(checkpointer: Any | None = None) -> StateGraph:
 # ---------------------------------------------------------------------------
 # Convenience runner
 # ---------------------------------------------------------------------------
+
 
 def analyze_variant(
     variant: Variant,

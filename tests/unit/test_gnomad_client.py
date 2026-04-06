@@ -3,7 +3,13 @@
 import pytest
 
 from variantagent.models.variant import Variant
-from variantagent.tools.gnomad_client import _build_variant_id, _compute_af, _parse_gnomad_response
+from variantagent.tools.gnomad_client import (
+    GNOMAD_API,
+    VARIANT_QUERY,
+    _build_variant_id,
+    _compute_af,
+    _parse_gnomad_response,
+)
 
 
 class TestBuildVariantId:
@@ -84,3 +90,59 @@ class TestParseGnomadResponse:
         data = {"data": {"variant": {"exome": None, "genome": None}}}
         result = _parse_gnomad_response(data)
         assert result.found is False
+
+    def test_parse_genome_only(self) -> None:
+        """Only genome data (no exome)."""
+        data = {
+            "data": {
+                "variant": {
+                    "exome": None,
+                    "genome": {
+                        "ac": 5,
+                        "an": 10000,
+                        "ac_hom": 0,
+                        "populations": [{"id": "nfe", "ac": 4, "an": 8000}],
+                    },
+                }
+            }
+        }
+        result = _parse_gnomad_response(data)
+        assert result.found is True
+        assert result.allele_count == 5
+        assert result.allele_number == 10000
+        assert result.nfe_af == pytest.approx(4 / 8000)
+
+    def test_parse_population_merged_from_both(self) -> None:
+        """Population data merged from exome + genome."""
+        data = {
+            "data": {
+                "variant": {
+                    "exome": {
+                        "ac": 10,
+                        "an": 50000,
+                        "ac_hom": 0,
+                        "populations": [{"id": "afr", "ac": 5, "an": 10000}],
+                    },
+                    "genome": {
+                        "ac": 5,
+                        "an": 30000,
+                        "ac_hom": 0,
+                        "populations": [{"id": "afr", "ac": 3, "an": 6000}],
+                    },
+                }
+            }
+        }
+        result = _parse_gnomad_response(data)
+        assert result.found is True
+        # afr merged: ac=8, an=16000 → af=0.0005
+        assert result.afr_af == pytest.approx(8 / 16000)
+
+
+class TestConstants:
+    def test_gnomad_api_url(self) -> None:
+        assert "gnomad" in GNOMAD_API
+        assert GNOMAD_API.startswith("https://")
+
+    def test_variant_query_is_graphql(self) -> None:
+        assert "query" in VARIANT_QUERY.lower()
+        assert "variantId" in VARIANT_QUERY

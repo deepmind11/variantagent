@@ -3,13 +3,17 @@
 These tests mock the external API calls to run without network access.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from variantagent.agents.orchestrator import analyze_variant
-from variantagent.models.annotation import ClinVarAnnotation, EnsemblVEPAnnotation, GnomADFrequency, VariantAnnotation
-from variantagent.models.qc_metrics import QCStatus
+from variantagent.models.annotation import (
+    ClinVarAnnotation,
+    EnsemblVEPAnnotation,
+    GnomADFrequency,
+    VariantAnnotation,
+)
 from variantagent.models.report import TriageReport
 from variantagent.models.variant import Variant, VariantType
 
@@ -18,9 +22,13 @@ def _mock_annotation_sync(variant):
     """Return a realistic mock annotation — variant not found in ClinVar."""
     annotation = VariantAnnotation(
         clinvar=ClinVarAnnotation(found=False),
-        gnomad=GnomADFrequency(found=True, overall_af=0.0001, allele_count=10, allele_number=100000),
+        gnomad=GnomADFrequency(
+            found=True, overall_af=0.0001, allele_count=10, allele_number=100000
+        ),
         ensembl_vep=EnsemblVEPAnnotation(
-            found=True, consequence_type="missense_variant", impact="MODERATE",
+            found=True,
+            consequence_type="missense_variant",
+            impact="MODERATE",
             gene_symbol="TP53",
         ),
     )
@@ -31,12 +39,15 @@ def _mock_annotation_sync_clinvar_found(variant):
     """Return a mock annotation where ClinVar DOES find the variant."""
     annotation = VariantAnnotation(
         clinvar=ClinVarAnnotation(
-            found=True, clinical_significance="Pathogenic",
+            found=True,
+            clinical_significance="Pathogenic",
             review_status="criteria provided, multiple submitters, no conflicts",
             review_stars=2,
         ),
         gnomad=GnomADFrequency(found=True, overall_af=0.00001),
-        ensembl_vep=EnsemblVEPAnnotation(found=True, consequence_type="missense_variant", impact="MODERATE"),
+        ensembl_vep=EnsemblVEPAnnotation(
+            found=True, consequence_type="missense_variant", impact="MODERATE"
+        ),
     )
     return annotation, [], ["ClinVar", "Ensembl VEP", "gnomAD"]
 
@@ -98,7 +109,10 @@ class TestOrchestratorGraph:
 
     def test_variant_without_gene(self) -> None:
         variant = Variant(
-            chromosome="chr1", position=100000, reference="A", alternate="G",
+            chromosome="chr1",
+            position=100000,
+            reference="A",
+            alternate="G",
             variant_type=VariantType.SNV,
         )
         report = analyze_variant(variant)

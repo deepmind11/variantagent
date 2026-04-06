@@ -1,8 +1,11 @@
 """Tests for the classification agent's evidence-based criterion evaluation."""
 
-from variantagent.agents.orchestrator import _evaluate_criteria_from_evidence, _calculate_confidence
+from variantagent.agents.orchestrator import _calculate_confidence, _evaluate_criteria_from_evidence
 from variantagent.models.annotation import (
-    ClinVarAnnotation, EnsemblVEPAnnotation, GnomADFrequency, VariantAnnotation,
+    ClinVarAnnotation,
+    EnsemblVEPAnnotation,
+    GnomADFrequency,
+    VariantAnnotation,
 )
 from variantagent.models.variant import Variant, VariantType
 from variantagent.tools.acmg_engine import classify
@@ -11,8 +14,12 @@ from variantagent.tools.acmg_engine import classify
 class TestEvaluateCriteriaFromEvidence:
     def _make_variant(self) -> Variant:
         return Variant(
-            chromosome="chr17", position=7674220, reference="G", alternate="A",
-            gene="TP53", variant_type=VariantType.SNV,
+            chromosome="chr17",
+            position=7674220,
+            reference="G",
+            alternate="A",
+            gene="TP53",
+            variant_type=VariantType.SNV,
         )
 
     def test_common_variant_gets_ba1(self) -> None:
@@ -50,8 +57,10 @@ class TestEvaluateCriteriaFromEvidence:
         """ClinVar Pathogenic with 2+ stars → PP5."""
         annotation = VariantAnnotation(
             clinvar=ClinVarAnnotation(
-                found=True, clinical_significance="Pathogenic",
-                review_stars=3, submitter_count=10,
+                found=True,
+                clinical_significance="Pathogenic",
+                review_stars=3,
+                submitter_count=10,
             ),
         )
         criteria = _evaluate_criteria_from_evidence(self._make_variant(), annotation)
@@ -62,7 +71,8 @@ class TestEvaluateCriteriaFromEvidence:
         """ClinVar Benign with 2+ stars → BP6."""
         annotation = VariantAnnotation(
             clinvar=ClinVarAnnotation(
-                found=True, clinical_significance="Benign",
+                found=True,
+                clinical_significance="Benign",
                 review_stars=2,
             ),
         )
@@ -74,8 +84,11 @@ class TestEvaluateCriteriaFromEvidence:
         """SIFT deleterious + PolyPhen damaging → PP3."""
         annotation = VariantAnnotation(
             ensembl_vep=EnsemblVEPAnnotation(
-                found=True, sift_prediction="deleterious", sift_score=0.0,
-                polyphen_prediction="probably_damaging", polyphen_score=0.999,
+                found=True,
+                sift_prediction="deleterious",
+                sift_score=0.0,
+                polyphen_prediction="probably_damaging",
+                polyphen_score=0.999,
             ),
         )
         criteria = _evaluate_criteria_from_evidence(self._make_variant(), annotation)
@@ -86,8 +99,11 @@ class TestEvaluateCriteriaFromEvidence:
         """SIFT tolerated + PolyPhen benign → BP4."""
         annotation = VariantAnnotation(
             ensembl_vep=EnsemblVEPAnnotation(
-                found=True, sift_prediction="tolerated", sift_score=0.8,
-                polyphen_prediction="benign", polyphen_score=0.01,
+                found=True,
+                sift_prediction="tolerated",
+                sift_score=0.8,
+                polyphen_prediction="benign",
+                polyphen_score=0.01,
             ),
         )
         criteria = _evaluate_criteria_from_evidence(self._make_variant(), annotation)
@@ -98,7 +114,8 @@ class TestEvaluateCriteriaFromEvidence:
         """Variant in a protein domain → PM1."""
         annotation = VariantAnnotation(
             ensembl_vep=EnsemblVEPAnnotation(
-                found=True, protein_domain="P53_DNA-binding",
+                found=True,
+                protein_domain="P53_DNA-binding",
             ),
         )
         criteria = _evaluate_criteria_from_evidence(self._make_variant(), annotation)
@@ -109,14 +126,20 @@ class TestEvaluateCriteriaFromEvidence:
         """Rare + ClinVar pathogenic + computational deleterious + domain → classification."""
         annotation = VariantAnnotation(
             clinvar=ClinVarAnnotation(
-                found=True, clinical_significance="Pathogenic",
-                review_stars=3, submitter_count=15,
+                found=True,
+                clinical_significance="Pathogenic",
+                review_stars=3,
+                submitter_count=15,
             ),
             gnomad=GnomADFrequency(found=True, overall_af=0.000005),
             ensembl_vep=EnsemblVEPAnnotation(
-                found=True, consequence_type="missense_variant", impact="MODERATE",
-                sift_prediction="deleterious", sift_score=0.0,
-                polyphen_prediction="probably_damaging", polyphen_score=0.999,
+                found=True,
+                consequence_type="missense_variant",
+                impact="MODERATE",
+                sift_prediction="deleterious",
+                sift_score=0.0,
+                polyphen_prediction="probably_damaging",
+                polyphen_score=0.999,
                 protein_domain="P53_DNA-binding",
             ),
         )
@@ -130,7 +153,7 @@ class TestEvaluateCriteriaFromEvidence:
         assert "PP3" in codes
         assert "PM1" in codes
 
-        result, rule = classify(criteria)
+        result, _ = classify(criteria)
         # 2 Moderate + 2 Supporting = Likely Pathogenic
         assert result.value == "Likely Pathogenic"
 
@@ -150,10 +173,12 @@ class TestEvaluateCriteriaFromEvidence:
 class TestCalculateConfidence:
     def test_no_annotation(self) -> None:
         from variantagent.models.classification import ACMGCriteria
+
         assert _calculate_confidence(None, ACMGCriteria()) == 0.2
 
     def test_full_data_high_confidence(self) -> None:
         from variantagent.models.classification import ACMGCriteria
+
         annotation = VariantAnnotation(
             clinvar=ClinVarAnnotation(found=True, review_stars=3),
             gnomad=GnomADFrequency(found=True),

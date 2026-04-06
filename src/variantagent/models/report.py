@@ -37,9 +37,7 @@ class ReviewerFinding(BaseModel):
     source_references: list[str] = Field(
         default_factory=list, description="Sources that support or contradict the claim"
     )
-    concern: str | None = Field(
-        default=None, description="Concern raised by the reviewer (if any)"
-    )
+    concern: str | None = Field(default=None, description="Concern raised by the reviewer (if any)")
     hallucination_risk: str = Field(
         default="low", description="Hallucination risk: low, medium, high"
     )
@@ -70,9 +68,7 @@ class TriageReport(BaseModel):
     requires_human_review: bool = Field(
         default=False, description="Whether this report was flagged for human review"
     )
-    human_review_reason: str | None = Field(
-        default=None, description="Why human review is needed"
-    )
+    human_review_reason: str | None = Field(default=None, description="Why human review is needed")
 
     # Provenance
     provenance: list[ProvenanceEntry] = Field(

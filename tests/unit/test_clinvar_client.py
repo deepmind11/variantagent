@@ -1,14 +1,25 @@
 """Tests for ClinVar client — parsing logic only (no live API calls)."""
 
-from variantagent.models.annotation import ClinVarAnnotation
-from variantagent.tools.clinvar_client import _build_query, _parse_esummary
-from variantagent.models.variant import Variant, VariantType
+import asyncio
+
+from variantagent.models.variant import Variant
+from variantagent.tools.clinvar_client import (
+    EUTILS_BASE,
+    REVIEW_STATUS_STARS,
+    _base_params,
+    _build_query,
+    _get_ncbi_semaphore,
+    _parse_esummary,
+)
 
 
 class TestBuildQuery:
     def test_query_by_rsid(self) -> None:
         v = Variant(
-            chromosome="chr17", position=7674220, reference="G", alternate="A",
+            chromosome="chr17",
+            position=7674220,
+            reference="G",
+            alternate="A",
             rsid="rs28934578",
         )
         assert _build_query(v) == "rs28934578[rsid]"
@@ -79,3 +90,85 @@ class TestParseEsummary:
         assert result.found is True
         assert result.clinical_significance == "Uncertain significance"
         assert result.review_stars == 1
+
+    def test_parse_record_without_conditions(self) -> None:
+        data = {
+            "result": {
+                "uids": ["11111"],
+                "11111": {
+                    "uid": "11111",
+                    "germline_classification": {
+                        "description": "Likely pathogenic",
+                        "review_status": "criteria provided, single submitter",
+                        "trait_set": [],
+                    },
+                    "supporting_submissions": {"scv": ["SCV001"]},
+                },
+            }
+        }
+        result = _parse_esummary(data, ["11111"])
+        assert result.found is True
+        assert result.conditions == []
+
+    def test_parse_expert_panel_review_stars(self) -> None:
+        data = {
+            "result": {
+                "uids": ["22222"],
+                "22222": {
+                    "uid": "22222",
+                    "germline_classification": {
+                        "description": "Pathogenic",
+                        "review_status": "reviewed by expert panel",
+                        "trait_set": [],
+                    },
+                    "supporting_submissions": {"scv": []},
+                },
+            }
+        }
+        result = _parse_esummary(data, ["22222"])
+        assert result.review_stars == 3
+
+
+class TestBaseParams:
+    def test_returns_tool_and_email(self) -> None:
+        params = _base_params()
+        assert params["tool"] == "variantagent"
+        assert "email" in params
+
+    def test_returns_dict_of_strings(self) -> None:
+        params = _base_params()
+        assert isinstance(params, dict)
+        for k, v in params.items():
+            assert isinstance(k, str)
+            assert isinstance(v, str)
+
+
+class TestGetNcbiSemaphore:
+    def test_returns_semaphore(self) -> None:
+        import variantagent.tools.clinvar_client as cc
+
+        cc._ncbi_semaphore = None  # reset
+        sem = _get_ncbi_semaphore()
+        assert isinstance(sem, asyncio.Semaphore)
+
+    def test_returns_same_instance(self) -> None:
+        sem1 = _get_ncbi_semaphore()
+        sem2 = _get_ncbi_semaphore()
+        assert sem1 is sem2
+
+
+class TestReviewStatusStars:
+    def test_practice_guideline_is_4(self) -> None:
+        assert REVIEW_STATUS_STARS["practice guideline"] == 4
+
+    def test_expert_panel_is_3(self) -> None:
+        assert REVIEW_STATUS_STARS["reviewed by expert panel"] == 3
+
+    def test_no_criteria_is_0(self) -> None:
+        assert REVIEW_STATUS_STARS["no assertion criteria provided"] == 0
+
+
+class TestEutilsBase:
+    def test_eutils_base_is_ncbi_url(self) -> None:
+        assert "ncbi.nlm.nih.gov" in EUTILS_BASE
+        assert EUTILS_BASE.startswith("https://")

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 import httpx
 
@@ -67,7 +68,7 @@ def _compute_af(ac: int | None, an: int | None) -> float | None:
     return ac / an
 
 
-def _parse_gnomad_response(data: dict) -> GnomADFrequency:
+def _parse_gnomad_response(data: dict[str, Any]) -> GnomADFrequency:
     """Parse gnomAD GraphQL response into GnomADFrequency.
 
     Merges exome and genome data when both are available.
@@ -82,12 +83,11 @@ def _parse_gnomad_response(data: dict) -> GnomADFrequency:
     if exome is None and genome is None:
         return GnomADFrequency(found=False)
 
-    # Use exome data preferentially, fall back to genome
-    primary = exome or genome
-
     total_ac = (exome.get("ac", 0) if exome else 0) + (genome.get("ac", 0) if genome else 0)
     total_an = (exome.get("an", 0) if exome else 0) + (genome.get("an", 0) if genome else 0)
-    total_hom = (exome.get("ac_hom", 0) if exome else 0) + (genome.get("ac_hom", 0) if genome else 0)
+    total_hom = (exome.get("ac_hom", 0) if exome else 0) + (
+        genome.get("ac_hom", 0) if genome else 0
+    )
 
     # Build population frequency map from primary dataset
     pop_map: dict[str, dict[str, int]] = {}

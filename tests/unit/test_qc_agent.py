@@ -120,10 +120,16 @@ class TestAssessMultiqc:
 class TestRunQCAssessment:
     def test_overall_pass(self) -> None:
         flagstat = FlagstatMetrics(
-            total_reads=10_000_000, mapped_reads=9_800_000, mapping_rate=0.98,
-            duplicates=500_000, duplication_rate=0.05, paired_reads=10_000_000,
-            properly_paired=9_500_000, properly_paired_rate=0.95,
-            singletons=100_000, singleton_rate=0.01,
+            total_reads=10_000_000,
+            mapped_reads=9_800_000,
+            mapping_rate=0.98,
+            duplicates=500_000,
+            duplication_rate=0.05,
+            paired_reads=10_000_000,
+            properly_paired=9_500_000,
+            properly_paired_rate=0.95,
+            singletons=100_000,
+            singleton_rate=0.01,
         )
         assessment = run_qc_assessment("S001", flagstat=flagstat, variant_region_coverage=150.0)
         assert assessment.overall_status == QCStatus.PASS
@@ -132,10 +138,16 @@ class TestRunQCAssessment:
 
     def test_overall_fail_from_flagstat(self) -> None:
         flagstat = FlagstatMetrics(
-            total_reads=5_000_000, mapped_reads=4_000_000, mapping_rate=0.80,
-            duplicates=3_000_000, duplication_rate=0.60, paired_reads=5_000_000,
-            properly_paired=3_500_000, properly_paired_rate=0.70,
-            singletons=600_000, singleton_rate=0.12,
+            total_reads=5_000_000,
+            mapped_reads=4_000_000,
+            mapping_rate=0.80,
+            duplicates=3_000_000,
+            duplication_rate=0.60,
+            paired_reads=5_000_000,
+            properly_paired=3_500_000,
+            properly_paired_rate=0.70,
+            singletons=600_000,
+            singleton_rate=0.12,
         )
         assessment = run_qc_assessment("S001", flagstat=flagstat)
         assert assessment.overall_status == QCStatus.FAIL
@@ -143,10 +155,16 @@ class TestRunQCAssessment:
 
     def test_low_variant_coverage_unreliable(self) -> None:
         flagstat = FlagstatMetrics(
-            total_reads=10_000_000, mapped_reads=9_800_000, mapping_rate=0.98,
-            duplicates=500_000, duplication_rate=0.05, paired_reads=10_000_000,
-            properly_paired=9_500_000, properly_paired_rate=0.95,
-            singletons=100_000, singleton_rate=0.01,
+            total_reads=10_000_000,
+            mapped_reads=9_800_000,
+            mapping_rate=0.98,
+            duplicates=500_000,
+            duplication_rate=0.05,
+            paired_reads=10_000_000,
+            properly_paired=9_500_000,
+            properly_paired_rate=0.95,
+            singletons=100_000,
+            singleton_rate=0.01,
         )
         assessment = run_qc_assessment("S001", flagstat=flagstat, variant_region_coverage=5.0)
         assert assessment.overall_status == QCStatus.FAIL
