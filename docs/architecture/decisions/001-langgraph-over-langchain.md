@@ -18,7 +18,6 @@ Use **LangGraph** as the primary orchestration framework.
 2. **Dynamic routing.** We need conditional edges (e.g., if QC fails, skip annotation). LangGraph's graph structure supports this natively.
 3. **Production adoption.** LangGraph has 38M+ monthly PyPI downloads and is the most common framework in enterprise agent deployments (as of early 2026).
 4. **Observability.** LangSmith integration provides trace-level visibility into every agent decision, which is critical for a system making clinical-adjacent assessments.
-5. **Industry demand.** LangChain/LangGraph appears in 8/10 agentic AI job descriptions in biotech (based on analysis of 10+ JDs).
 
 ## Alternatives Considered
 - **OpenAI Agents SDK:** Simpler API but lacks stateful orchestration and is tied to OpenAI's ecosystem. May add as a secondary implementation for comparison.

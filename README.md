@@ -146,7 +146,7 @@ All data sources are public and free:
 
 ## Limitations
 
-1. **Not for clinical use.** This is a portfolio/research tool. Clinical variant interpretation requires validated, accredited systems.
+1. **Not for clinical use.** This is a research/educational tool. Clinical variant interpretation requires validated, accredited systems.
 2. **Subset of ACMG criteria.** Implements ~17 of 28 ACMG evidence criteria. Functional studies (PS3) and segregation (PP1/BS4) require data not available from public APIs.
 3. **LLM reasoning is non-deterministic.** The same variant may receive slightly different criterion assessments across runs. The deterministic rule engine ensures classification consistency given the same criteria.
 4. **Rate-limited by public APIs.** NCBI E-utilities allow 3 requests/second without an API key (10/sec with key). Batch analysis of large VCFs will be slow.
